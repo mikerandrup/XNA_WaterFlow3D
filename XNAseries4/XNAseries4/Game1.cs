@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.GamerServices;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
+using System.Diagnostics;
 
 namespace XNASeries4
 {
@@ -35,17 +36,13 @@ namespace XNASeries4
         public Vector4 TexWeights;
 
         public static int SizeInBytes = (3 + 3 + 4 + 4) * sizeof(float);
-        public static VertexElement[] VertexElements = new VertexElement[]
-     {
+        public static VertexElement[] VertexElements = new VertexElement[] {
          new VertexElement(  0, VertexElementFormat.Vector3, VertexElementUsage.Position, 0 ),
          new VertexElement(  sizeof(float) * 3, VertexElementFormat.Vector3, VertexElementUsage.Normal, 0 ),
          new VertexElement(  sizeof(float) * 6, VertexElementFormat.Vector4, VertexElementUsage.TextureCoordinate, 0 ),
          new VertexElement(  sizeof(float) * 10, VertexElementFormat.Vector4, VertexElementUsage.TextureCoordinate, 1 ),
      };
     }
-
-
-
 
     public class Game1 : Microsoft.Xna.Framework.Game
     {
@@ -59,7 +56,10 @@ namespace XNASeries4
         VertexBuffer terrainVertexBuffer;
         IndexBuffer terrainIndexBuffer;
         VertexMultitextured[] vertices;
+        VertexPositionTexture[] waterVertices;
         int[] indices;
+
+        VertexMultitextured[] terrainVertices;
 
         Effect effect;
         Effect bbEffect;
@@ -88,17 +88,100 @@ namespace XNASeries4
 
         Model skyDome;
 
-        const float waterHeight = 10.0f;
+        const float waterHeight = 10.0f; // this value is mostly an artifact of riemer's layer. mostly.
         RenderTarget2D refractionRenderTarget;
         Texture2D refractionMap;
 
         RenderTarget2D reflectionRenderTarget;
         Texture2D reflectionMap;
 
-        VertexBuffer waterVertexBuffer;
-
         Vector3 windDirection = new Vector3(1, 0, 0);
 
+        VertexBuffer waterVertexBuffer;
+        float waterExistenceThreshold = 0.001f;
+        float[] waterValueModel;
+
+        // config block
+        bool WireFramesOnly = true; // overwritten by input state
+
+        float emitterBaseStrength = 5.0f;
+        float cursorEmitterStrength;
+        float globalEmitterStrength;
+
+        float landMultStrength = 1.00f;
+        float uphillDampening = 0.6f;
+        float downhillDampening = 0.6f;
+
+        float initialLandScale = 0.5f;
+        float waterGlobalValue =0f;
+        string terrainTextureName = "rivermap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
+
+        // water stuff
+        private void actionDrainWaterAll() {
+            for (int i = 0; i < terrainVertices.Length; i++){
+                waterValueModel[i] -= globalEmitterStrength;
+            }
+        }
+        private void actionEmitWaterAll() {
+            for (int i = 0; i < terrainVertices.Length; i++) {
+                waterValueModel[i] += globalEmitterStrength;
+            }
+        }
+        private void actionEmitWaterCursor() {
+            int cursorSlot = findCursor();
+            waterValueModel[cursorSlot] += cursorEmitterStrength;
+        }
+        private void actionDrainWaterCursor()
+        {
+            int cursorSlot = findCursor();
+            waterValueModel[cursorSlot] -= cursorEmitterStrength;
+        }
+        private void actionEliminateWater()
+        {
+            for (int i = 0; i < waterValueModel.Length; i++) {
+                waterValueModel[i] = 0;
+            }
+        }
+        private void actionTidalWave()
+        {
+            for (int i = 0; i < terrainWidth; i++) {
+                waterValueModel[i] += globalEmitterStrength*terrainLength; 
+            }
+        }
+
+
+
+        // land stuff
+        private void actionScaleLandUp() {
+            for (int i=0; i<terrainVertices.Length; i++) {
+                terrainVertices[i].Position.Y *= landMultStrength; // scale appropriate to terrain
+            }
+            device.SetVertexBuffer(null);
+            terrainVertexBuffer.SetData(terrainVertices); 
+        }
+        private void actionScaleLandDown() {
+            for (int i=0; i<terrainVertices.Length; i++) {
+                terrainVertices[i].Position.Y *= 1 / landMultStrength; //reciprocal, yo!
+            }
+            device.SetVertexBuffer(null);
+            terrainVertexBuffer.SetData(terrainVertices); 
+        }
+        private void toggleWireFramesOnly(){
+            if (WireFramesOnly) WireFramesOnly = false;
+            else WireFramesOnly = true;
+        }
+
+        private int findCursor()
+        {
+            // later we'll actually come up with something real here, for now, the middle of the map
+            int cursorLoc = (terrainWidth / 2) + (terrainLength / 2) * terrainLength;
+            
+            // oh wait, we're overriding that here.
+            //
+            //cursorLoc = 128+48;
+
+            return(cursorLoc);
+        }
 
         public Game1()
         {
@@ -109,13 +192,18 @@ namespace XNASeries4
         protected override void Initialize()
         {
             IsMouseVisible = true;
+            graphics.PreferredBackBufferWidth = 1024;
+            graphics.PreferredBackBufferHeight = 768;
 
-            graphics.PreferredBackBufferWidth = 1200;
-            graphics.PreferredBackBufferHeight = 700;
-
+            //this.graphics.IsFullScreen = true;
 
             graphics.ApplyChanges();
-            Window.Title = "Riemer's XNA Tutorials -- Series 4";
+
+            //emmitterbase value adjustments
+            cursorEmitterStrength = emitterBaseStrength * 20.0f;
+            globalEmitterStrength = emitterBaseStrength / 100.0f;
+
+            Window.Title = "Mike Randrup's WaterFlow Sim (built on Riemer's 3D Tutorials & XNA)";
 
             base.Initialize();
         }
@@ -144,27 +232,22 @@ namespace XNASeries4
 
             LoadVertices();
             LoadTextures();
-
         }
 
         private void LoadVertices()
         {
-
-            Texture2D heightMap = Content.Load<Texture2D>("heightmap"); LoadHeightData(heightMap);
+            Texture2D heightMap = Content.Load<Texture2D>(terrainTextureName);
+            LoadHeightData(heightMap);
             VertexMultitextured[] terrainVertices = SetUpTerrainVertices();
             int[] terrainIndices = SetUpTerrainIndices();
             terrainVertices = CalculateNormals(terrainVertices, terrainIndices);
             CopyToTerrainBuffers(terrainVertices, terrainIndices);
 
-            List<Vector3> treeList = GenerateTreePositions(terrainVertices);
-            CreateBillboardVerticesFromList(treeList);
+            //List<Vector3> treeList = GenerateTreePositions(terrainVertices);
+            //CreateBillboardVerticesFromList(treeList);
 
             SetUpWaterVertices();
-
         }
-
-
-
 
         private void LoadTextures()
         {
@@ -176,12 +259,7 @@ namespace XNASeries4
 
             cloudMap = Content.Load<Texture2D>("cloudMap");
             waterBumpMap = Content.Load<Texture2D>("waterbump");
-
-
         }
-
-
-
 
         private void LoadHeightData(Texture2D heightMap)
         {
@@ -205,12 +283,12 @@ namespace XNASeries4
 
             for (int x = 0; x < terrainWidth; x++)
                 for (int y = 0; y < terrainLength; y++)
-                    heightData[x, y] = (heightData[x, y] - minimumHeight) / (maximumHeight - minimumHeight) * 30.0f;
+                    heightData[x, y] = (heightData[x, y] - minimumHeight) / (maximumHeight - minimumHeight) * 30.0f * initialLandScale;
         }
 
         private VertexMultitextured[] SetUpTerrainVertices()
         {
-            VertexMultitextured[] terrainVertices = new VertexMultitextured[terrainWidth * terrainLength];
+            terrainVertices = new VertexMultitextured[terrainWidth * terrainLength];
             vertices = new VertexMultitextured[terrainWidth * terrainLength];
 
             for (int x = 0; x < terrainWidth; x++)
@@ -243,7 +321,6 @@ namespace XNASeries4
 
         private List<Vector3> GenerateTreePositions(VertexMultitextured[] terrainVertices)
         {
-
             List<Vector3> treeList = new List<Vector3>();
             treeList.Add(terrainVertices[3310].Position);
             treeList.Add(terrainVertices[3315].Position);
@@ -320,18 +397,26 @@ namespace XNASeries4
 
         private void SetUpWaterVertices()
         {
-            VertexPositionTexture[] waterVertices = new VertexPositionTexture[6];
+            waterVertices = new VertexPositionTexture[terrainWidth * terrainLength];
+            waterValueModel = new float[terrainWidth * terrainLength];
 
-            waterVertices[0] = new VertexPositionTexture(new Vector3(0, waterHeight, 0), new Vector2(0, 1));
-            waterVertices[2] = new VertexPositionTexture(new Vector3(terrainWidth, waterHeight, -terrainLength), new Vector2(1, 0));
-            waterVertices[1] = new VertexPositionTexture(new Vector3(0, waterHeight, -terrainLength), new Vector2(0, 0));
-
-            waterVertices[3] = new VertexPositionTexture(new Vector3(0, waterHeight, 0), new Vector2(0, 1));
-            waterVertices[5] = new VertexPositionTexture(new Vector3(terrainWidth, waterHeight, 0), new Vector2(1, 1));
-            waterVertices[4] = new VertexPositionTexture(new Vector3(terrainWidth, waterHeight, -terrainLength), new Vector2(1, 0));
+            for (int x = 0; x < terrainWidth; x++)
+            {
+                for (int y = 0; y < terrainLength; y++)
+                {
+                    waterValueModel[x + y * terrainWidth] = waterGlobalValue;
+                    waterVertices[x + y * terrainWidth] = new VertexPositionTexture(
+                        new Vector3(
+                            (terrainVertices[x + y * terrainWidth].Position.X),
+                            0.0f, // base value, actually set in update loop
+                            (terrainVertices[x + y * terrainWidth].Position.Z)
+                            ),
+                        new Vector2(x / terrainWidth, y / terrainLength)
+                    );
+                }
+            }
 
             waterVertexBuffer = new VertexBuffer(GraphicsDevice, VertexPositionTexture.VertexDeclaration, waterVertices.Count(), BufferUsage.WriteOnly);
-
 
             waterVertexBuffer.SetData(waterVertices);
         }
@@ -346,17 +431,107 @@ namespace XNASeries4
         {
             KeyboardState keyboardState = Keyboard.GetState();
 
-            if (keyboardState.IsKeyDown(Keys.Escape))
-                this.Exit();
+            if (keyboardState.IsKeyDown(Keys.Escape)) this.Exit();
+
+            if (keyboardState.IsKeyDown(Keys.OemPeriod)) toggleWireFramesOnly();
+
+            if (keyboardState.IsKeyDown(Keys.T)) actionEmitWaterCursor();
+            if (keyboardState.IsKeyDown(Keys.G)) actionDrainWaterCursor();
+            if (keyboardState.IsKeyDown(Keys.N)) actionEliminateWater();
+            if (keyboardState.IsKeyDown(Keys.U)) actionDrainWaterAll();
+            if (keyboardState.IsKeyDown(Keys.J)) actionEmitWaterAll();
+            if (keyboardState.IsKeyDown(Keys.M)) actionTidalWave();
+
+            if (keyboardState.IsKeyDown(Keys.I)) actionScaleLandUp();
+            if (keyboardState.IsKeyDown(Keys.K)) actionScaleLandDown();
 
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)
                 this.Exit();
 
             float timeDifference = (float)gameTime.ElapsedGameTime.TotalMilliseconds / 1000.0f;
             ProcessInput(timeDifference);
+            UpdateWaterModel();
+            UpdateWater();
 
             base.Update(gameTime);
         }
+
+        private void UpdateWaterModel()
+        {
+            // this section is for the emitter
+
+            // this section is to resolve it all
+            float cellWater, cellLand, cellTotal;
+            int cellSlot;
+
+            float checkWater, checkLand, checkTotal, lowestNeighborValue;
+            int checkSlot, lowestNeighborSlot;
+
+            for (int x = 0; x < terrainWidth; x++)
+            {
+                for (int z = 0; z < terrainLength; z++) {
+
+                    lowestNeighborValue = 1000000.0f; // set artificially very high
+                    lowestNeighborSlot = -1; // used as a default flag not to process water
+
+                    cellSlot = x + z * terrainWidth;
+                    cellWater = waterValueModel[cellSlot];
+                    cellLand = terrainVertices[cellSlot].Position.Y;
+                    cellTotal = cellWater + cellLand;
+
+                    float waterDelta;
+                    float flowDampening; // set every iteration based on choice of behavior
+
+                    if (cellWater > waterExistenceThreshold) { // if there is water here to process
+
+                        for (int checkX = -1; checkX <= 1; checkX++) {
+                            for (int checkZ = -1; checkZ <= 1; checkZ++) {
+                                checkSlot = (checkX + x) + ((z + checkZ) * terrainWidth);
+                                if ((checkSlot >= 0) && (checkSlot < (terrainWidth * terrainLength)))
+                                { // array bounds check
+                                    if (cellSlot != checkSlot)
+                                    { // skip the self cell case
+                                        checkWater = waterValueModel[checkSlot];
+                                        checkLand = terrainVertices[checkSlot].Position.Y;
+                                        checkTotal = checkWater + checkLand;
+                                        if (checkTotal <= cellTotal)
+                                        {
+                                            if (lowestNeighborValue > checkTotal)
+                                            {
+                                                lowestNeighborValue = checkTotal;
+                                                lowestNeighborSlot = checkSlot;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (lowestNeighborSlot > -1) { // we found a lower neighbor in our pass
+                            if (terrainVertices[lowestNeighborSlot].Position.Y > cellLand)
+                                flowDampening = downhillDampening;  
+                            else 
+                                flowDampening = uphillDampening;
+
+                            float idealLevel = 
+                                (cellTotal +
+                                (waterValueModel[lowestNeighborSlot]+terrainVertices[lowestNeighborSlot].Position.Y))
+                                / 2;
+                            idealLevel -= terrainVertices[cellSlot].Position.Y; // adjust for land presence
+
+                            waterDelta = (cellWater - idealLevel) * flowDampening;
+
+                            waterValueModel[cellSlot] -= waterDelta;
+                            waterValueModel[lowestNeighborSlot] += waterDelta;
+                            cellWater -= waterDelta;
+                        }
+
+
+                    }
+                }
+            }
+        }
+
 
         private void CreateBillboardVerticesFromList(List<Vector3> treeList)
         {
@@ -435,9 +610,9 @@ namespace XNASeries4
 
 
             Vector3 reflCameraPosition = cameraPosition;
-            reflCameraPosition.Y = -cameraPosition.Y + waterHeight * 2;
+            reflCameraPosition.Y = -cameraPosition.Y + waterGlobalValue * 2;
             Vector3 reflTargetPos = cameraFinalTarget;
-            reflTargetPos.Y = -cameraFinalTarget.Y + waterHeight * 2;
+            reflTargetPos.Y = -cameraFinalTarget.Y + waterGlobalValue * 2;
 
             Vector3 cameraRight = Vector3.Transform(new Vector3(1, 0, 0), cameraRotation);
             Vector3 invUpVector = Vector3.Cross(cameraRight, reflTargetPos - reflCameraPosition);
@@ -449,26 +624,28 @@ namespace XNASeries4
         {
             float time = (float)gameTime.TotalGameTime.TotalMilliseconds / 100.0f;
             RasterizerState rs = new RasterizerState();
-            rs.CullMode = CullMode.None;
+            if (!WireFramesOnly){
+                rs.FillMode = FillMode.WireFrame;
+            }
+            rs.CullMode = CullMode.None; // CullCounterClockwiseFace;
+            
             device.RasterizerState = rs;
 
             DrawRefractionMap();
             DrawReflectionMap();
 
-            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1.0f, 0);
+            Color bgColor = new Color(0.94140625f, 0.7421875f, 0.21484375f);
+
+            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, bgColor, 1.0f, 0);
 
             DrawSkyDome(viewMatrix);
 
             DrawTerrain(viewMatrix);
 
-            DrawWater(time);
-
-            DrawBillboards(viewMatrix);
-
+            DrawWater(time/10);
 
             base.Draw(gameTime);
         }
-
 
         private void DrawTerrain(Matrix currentViewMatrix)
         {
@@ -477,7 +654,6 @@ namespace XNASeries4
             effect.Parameters["xTexture1"].SetValue(grassTexture);
             effect.Parameters["xTexture2"].SetValue(rockTexture);
             effect.Parameters["xTexture3"].SetValue(snowTexture);
-
 
             Matrix worldMatrix = Matrix.Identity;
             effect.Parameters["xWorld"].SetValue(worldMatrix);
@@ -498,8 +674,6 @@ namespace XNASeries4
 
             }
         }
-
-
 
         private void DrawSkyDome(Matrix currentViewMatrix)
         {
@@ -538,13 +712,13 @@ namespace XNASeries4
 
         private void DrawRefractionMap()
         {
-            Plane refractionPlane = CreatePlane(waterHeight + 1.5f, new Vector3(0, -1, 0), viewMatrix, false);
+            Plane refractionPlane = CreatePlane(waterGlobalValue + 1.5f, new Vector3(0, -1, 0), viewMatrix, false);
 
             effect.Parameters["ClipPlane0"].SetValue(new Vector4(refractionPlane.Normal, refractionPlane.D));
             effect.Parameters["Clipping"].SetValue(true);    // Allows the geometry to be clipped for the purpose of creating a refraction map
             device.SetRenderTarget(refractionRenderTarget);
             device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1.0f, 0);
-            DrawTerrain(viewMatrix);
+            //DrawTerrain(viewMatrix);
             device.SetRenderTarget(null);
             effect.Parameters["Clipping"].SetValue(false);   // Make sure you turn it back off so the whole scene doesnt keep rendering as clipped
             refractionMap = refractionRenderTarget;
@@ -553,7 +727,7 @@ namespace XNASeries4
 
         private void DrawReflectionMap()
         {
-            Plane reflectionPlane = CreatePlane(waterHeight - 0.5f, new Vector3(0, -1, 0), reflectionViewMatrix, true);
+            Plane reflectionPlane = CreatePlane(waterGlobalValue - 0.5f, new Vector3(0, -1, 0), reflectionViewMatrix, true);
 
             effect.Parameters["ClipPlane0"].SetValue(new Vector4(reflectionPlane.Normal, reflectionPlane.D));
 
@@ -582,22 +756,32 @@ namespace XNASeries4
             effect.Parameters["xReflectionView"].SetValue(reflectionViewMatrix);
             effect.Parameters["xProjection"].SetValue(projectionMatrix);
             effect.Parameters["xReflectionMap"].SetValue(reflectionMap);
-            effect.Parameters["xRefractionMap"].SetValue(refractionMap);
+            //effect.Parameters["xRefractionMap"].SetValue(refractionMap);
             effect.Parameters["xWaterBumpMap"].SetValue(waterBumpMap);
-            effect.Parameters["xWaterBumpMap"].SetValue(waterBumpMap);
+            //effect.Parameters["xWaterBumpMap"].SetValue(waterBumpMap);
             effect.Parameters["xWaveLength"].SetValue(0.1f);
             effect.Parameters["xWaveHeight"].SetValue(0.3f);
             effect.Parameters["xTime"].SetValue(time);
             effect.Parameters["xWindForce"].SetValue(0.002f);
             effect.Parameters["xWindDirection"].SetValue(windDirection);
 
-
             effect.CurrentTechnique.Passes[0].Apply();
 
+            //device.SetVertexBuffer(waterVertexBuffer);
+            //device.DrawPrimitives(PrimitiveType.TriangleList, 0, waterVertexBuffer.VertexCount / 3);
 
+            device.Indices = terrainIndexBuffer;
             device.SetVertexBuffer(waterVertexBuffer);
 
-            device.DrawPrimitives(PrimitiveType.TriangleList, 0, waterVertexBuffer.VertexCount / 3);
+            //BlendState blendState = new BlendState();
+            //blendState.AlphaSourceBlend = Blend.One;
+            //blendState.AlphaDestinationBlend = Blend.One;
+            //blendState.ColorBlendFunction = BlendFunction.Add;
+            //device.BlendState = blendState;
+
+            device.BlendState = BlendState.Additive;
+            device.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, vertices.Length, 0, indices.Length / 3);
+            device.BlendState = BlendState.Opaque;
         }
 
         private void DrawBillboards(Matrix currentViewMatrix)
@@ -621,5 +805,32 @@ namespace XNASeries4
             }
             device.BlendState = BlendState.Opaque;
         }
+
+        private void UpdateWater()
+        {
+            float waterModelValue;
+            float landModelValue;
+
+            float waterOffset = 0.1f;
+
+            for (int x = 0; x < terrainWidth; x++)
+            {
+                for (int y = 0; y < terrainLength; y++)
+                {
+                    waterModelValue = waterValueModel[x + y * terrainWidth];
+                    landModelValue = terrainVertices[x + y * terrainWidth].Position.Y;
+
+                    if (waterModelValue < waterExistenceThreshold)
+                        waterVertices[x + y * terrainWidth].Position.Y = -1.0f;
+                    else
+                        waterVertices[x + y * terrainWidth].Position.Y = waterModelValue + landModelValue + waterOffset;
+                }
+            }
+
+            device.SetVertexBuffer(null);
+            waterVertexBuffer.SetData(waterVertices);
+        }
+
+
     }
 }

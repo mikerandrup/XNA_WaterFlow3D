@@ -257,9 +257,9 @@ WPixelToFrame WaterPS(WVertexToPixel PSIn)
     float fresnelTerm = dot(eyeVector, normalVector);    
     float4 combinedColor = lerp(reflectiveColor, refractiveColor, fresnelTerm);
     
-    float4 dullColor = float4(0.3f, 0.3f, 0.5f, 1.0f);
+    float4 dullColor = float4(0.1f, 0.2f, 0.5f, 1.0f);
     
-    Output.Color = lerp(combinedColor, dullColor, 0.2f);    
+    Output.Color = lerp(combinedColor, dullColor, 0.8f);    
     
     float3 reflectionVector = -reflect(xLightDirection, normalVector);
     float specular = dot(normalize(reflectionVector), normalize(eyeVector));
