@@ -9,6 +9,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
 using System.Diagnostics;
+using XNAseries4;
 
 namespace XNASeries4
 {
@@ -68,6 +69,8 @@ namespace XNASeries4
         Matrix projectionMatrix;
         Matrix reflectionViewMatrix;
 
+        CursorLocate cursorLocate;
+
         Vector3 cameraPosition = new Vector3(130, 30, -50);
         float leftrightRot = MathHelper.PiOver2;
         float updownRot = -MathHelper.Pi / 10.0f;
@@ -113,21 +116,26 @@ namespace XNASeries4
         float downhillDampening = 0.6f;
 
         float initialLandScale = 0.5f;
-        float waterGlobalValue =0f;
+        float waterGlobalValue = 0f;
         string terrainTextureName = "rivermap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
 
         // water stuff
-        private void actionDrainWaterAll() {
-            for (int i = 0; i < terrainVertices.Length; i++){
+        private void actionDrainWaterAll()
+        {
+            for (int i = 0; i < terrainVertices.Length; i++)
+            {
                 waterValueModel[i] -= globalEmitterStrength;
             }
         }
-        private void actionEmitWaterAll() {
-            for (int i = 0; i < terrainVertices.Length; i++) {
+        private void actionEmitWaterAll()
+        {
+            for (int i = 0; i < terrainVertices.Length; i++)
+            {
                 waterValueModel[i] += globalEmitterStrength;
             }
         }
-        private void actionEmitWaterCursor() {
+        private void actionEmitWaterCursor()
+        {
             int cursorSlot = findCursor();
             waterValueModel[cursorSlot] += cursorEmitterStrength;
         }
@@ -138,49 +146,62 @@ namespace XNASeries4
         }
         private void actionEliminateWater()
         {
-            for (int i = 0; i < waterValueModel.Length; i++) {
+            for (int i = 0; i < waterValueModel.Length; i++)
+            {
                 waterValueModel[i] = 0;
             }
         }
         private void actionTidalWave()
         {
-            for (int i = 0; i < terrainWidth; i++) {
-                waterValueModel[i] += globalEmitterStrength*terrainLength; 
+            for (int i = 0; i < terrainWidth; i++)
+            {
+                waterValueModel[i] += globalEmitterStrength * terrainLength;
             }
         }
 
 
 
         // land stuff
-        private void actionScaleLandUp() {
-            for (int i=0; i<terrainVertices.Length; i++) {
+        private void actionScaleLandUp()
+        {
+            for (int i = 0; i < terrainVertices.Length; i++)
+            {
                 terrainVertices[i].Position.Y *= landMultStrength; // scale appropriate to terrain
             }
             device.SetVertexBuffer(null);
-            terrainVertexBuffer.SetData(terrainVertices); 
+            terrainVertexBuffer.SetData(terrainVertices);
         }
-        private void actionScaleLandDown() {
-            for (int i=0; i<terrainVertices.Length; i++) {
+        private void actionScaleLandDown()
+        {
+            for (int i = 0; i < terrainVertices.Length; i++)
+            {
                 terrainVertices[i].Position.Y *= 1 / landMultStrength; //reciprocal, yo!
             }
             device.SetVertexBuffer(null);
-            terrainVertexBuffer.SetData(terrainVertices); 
+            terrainVertexBuffer.SetData(terrainVertices);
         }
-        private void toggleWireFramesOnly(){
+        private void actionEmitLandCursor()
+        {
+
+            int cursorSlot = findCursor();
+            float effectiveEmitterStrength = cursorEmitterStrength * 0.003f;
+
+            terrainVertices[cursorSlot].Position.Y += effectiveEmitterStrength; // scale appropriate to terrain
+
+            terrainVertexBuffer.SetData(terrainVertices);
+        }
+
+
+        private void toggleWireFramesOnly()
+        { // TODO implement better toggle feature through keyboard state
             if (WireFramesOnly) WireFramesOnly = false;
             else WireFramesOnly = true;
         }
 
         private int findCursor()
         {
-            // later we'll actually come up with something real here, for now, the middle of the map
-            int cursorLoc = (terrainWidth / 2) + (terrainLength / 2) * terrainLength;
-            
-            // oh wait, we're overriding that here.
-            //
-            //cursorLoc = 128+48;
-
-            return(cursorLoc);
+            int targetSlot = cursorLocate.xLoc + (cursorLocate.zLoc * terrainLength);
+            return (targetSlot);
         }
 
         public Game1()
@@ -232,6 +253,8 @@ namespace XNASeries4
 
             LoadVertices();
             LoadTextures();
+
+            cursorLocate = new CursorLocate();
         }
 
         private void LoadVertices()
@@ -444,6 +467,8 @@ namespace XNASeries4
 
             if (keyboardState.IsKeyDown(Keys.I)) actionScaleLandUp();
             if (keyboardState.IsKeyDown(Keys.K)) actionScaleLandDown();
+            if (keyboardState.IsKeyDown(Keys.Y)) actionEmitLandCursor();
+
 
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)
                 this.Exit();
@@ -469,7 +494,8 @@ namespace XNASeries4
 
             for (int x = 0; x < terrainWidth; x++)
             {
-                for (int z = 0; z < terrainLength; z++) {
+                for (int z = 0; z < terrainLength; z++)
+                {
 
                     lowestNeighborValue = 1000000.0f; // set artificially very high
                     lowestNeighborSlot = -1; // used as a default flag not to process water
@@ -482,10 +508,13 @@ namespace XNASeries4
                     float waterDelta;
                     float flowDampening; // set every iteration based on choice of behavior
 
-                    if (cellWater > waterExistenceThreshold) { // if there is water here to process
+                    if (cellWater > waterExistenceThreshold)
+                    { // if there is water here to process
 
-                        for (int checkX = -1; checkX <= 1; checkX++) {
-                            for (int checkZ = -1; checkZ <= 1; checkZ++) {
+                        for (int checkX = -1; checkX <= 1; checkX++)
+                        {
+                            for (int checkZ = -1; checkZ <= 1; checkZ++)
+                            {
                                 checkSlot = (checkX + x) + ((z + checkZ) * terrainWidth);
                                 if ((checkSlot >= 0) && (checkSlot < (terrainWidth * terrainLength)))
                                 { // array bounds check
@@ -507,15 +536,16 @@ namespace XNASeries4
                             }
                         }
 
-                        if (lowestNeighborSlot > -1) { // we found a lower neighbor in our pass
+                        if (lowestNeighborSlot > -1)
+                        { // we found a lower neighbor in our pass
                             if (terrainVertices[lowestNeighborSlot].Position.Y > cellLand)
-                                flowDampening = downhillDampening;  
-                            else 
+                                flowDampening = downhillDampening;
+                            else
                                 flowDampening = uphillDampening;
 
-                            float idealLevel = 
+                            float idealLevel =
                                 (cellTotal +
-                                (waterValueModel[lowestNeighborSlot]+terrainVertices[lowestNeighborSlot].Position.Y))
+                                (waterValueModel[lowestNeighborSlot] + terrainVertices[lowestNeighborSlot].Position.Y))
                                 / 2;
                             idealLevel -= terrainVertices[cellSlot].Position.Y; // adjust for land presence
 
@@ -557,6 +587,7 @@ namespace XNASeries4
 
         private void ProcessInput(float amount)
         {
+            // rotate camera
             MouseState currentMouseState = Mouse.GetState();
             if (currentMouseState != originalMouseState)
             {
@@ -568,15 +599,16 @@ namespace XNASeries4
                 UpdateViewMatrix();
             }
 
+            // move camera
             Vector3 moveVector = new Vector3(0, 0, 0);
             KeyboardState keyState = Keyboard.GetState();
-            if (keyState.IsKeyDown(Keys.Up) || keyState.IsKeyDown(Keys.W))
+            if (keyState.IsKeyDown(Keys.W))
                 moveVector += new Vector3(0, 0, -1);
-            if (keyState.IsKeyDown(Keys.Down) || keyState.IsKeyDown(Keys.S))
+            if (keyState.IsKeyDown(Keys.S))
                 moveVector += new Vector3(0, 0, 1);
-            if (keyState.IsKeyDown(Keys.Right) || keyState.IsKeyDown(Keys.D))
+            if (keyState.IsKeyDown(Keys.D))
                 moveVector += new Vector3(1, 0, 0);
-            if (keyState.IsKeyDown(Keys.Left) || keyState.IsKeyDown(Keys.A))
+            if (keyState.IsKeyDown(Keys.A))
                 moveVector += new Vector3(-1, 0, 0);
             if (keyState.IsKeyDown(Keys.Q))
                 moveVector += new Vector3(0, 1, 0);
@@ -584,6 +616,19 @@ namespace XNASeries4
                 moveVector += new Vector3(0, -1, 0);
 
             AddToCameraPosition(moveVector * amount);
+
+            // emitter cursor location
+            if (keyState.IsKeyDown(Keys.Up))
+                cursorLocate.AlterZ(1);
+            if (keyState.IsKeyDown(Keys.Down))
+                cursorLocate.AlterZ(-1);
+            if (keyState.IsKeyDown(Keys.Right))
+                cursorLocate.AlterZ(1);
+            if (keyState.IsKeyDown(Keys.Left))
+                cursorLocate.AlterX(-1);
+            if (keyState.IsKeyDown(Keys.End))
+                cursorLocate.ResetToCenter();
+
         }
 
         private void AddToCameraPosition(Vector3 vectorToAdd)
@@ -624,11 +669,12 @@ namespace XNASeries4
         {
             float time = (float)gameTime.TotalGameTime.TotalMilliseconds / 100.0f;
             RasterizerState rs = new RasterizerState();
-            if (!WireFramesOnly){
+            if (!WireFramesOnly)
+            {
                 rs.FillMode = FillMode.WireFrame;
             }
             rs.CullMode = CullMode.None; // CullCounterClockwiseFace;
-            
+
             device.RasterizerState = rs;
 
             DrawRefractionMap();
@@ -642,7 +688,7 @@ namespace XNASeries4
 
             DrawTerrain(viewMatrix);
 
-            DrawWater(time/10);
+            DrawWater(time / 10);
 
             base.Draw(gameTime);
         }
