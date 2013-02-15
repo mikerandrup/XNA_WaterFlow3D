@@ -8,14 +8,13 @@ namespace XNAseries4
     class CursorLocate
     {
 
-        public CursorLocate(int xLow = 0, int xHigh = 100, int zLow = 0, int zHigh = 100)
+        public CursorLocate(int xHigh = 100, int zHigh = 100)
         {
-            xMin = xLow;
+            xMin = 0;
             xMax = xHigh;
-            zMin = zLow;
+            zMin = 0;
             zMax = zHigh;
 
-            ResetToCenter();
             ResetToCenter();
         }
 

@@ -13,6 +13,11 @@ using XNAseries4;
 
 namespace XNASeries4
 {
+    public struct WaterAndSaturation
+    {
+        public float waterValue;
+        public float saturationValue;
+    }
 
     public struct VertexPositionNormalTexture
     {
@@ -45,7 +50,7 @@ namespace XNASeries4
      };
     }
 
-    public class Game1 : Microsoft.Xna.Framework.Game
+    public class WaterSim : Microsoft.Xna.Framework.Game
     {
         GraphicsDeviceManager graphics;
         GraphicsDevice device;
@@ -54,13 +59,13 @@ namespace XNASeries4
         int terrainLength;
         float[,] heightData;
 
-        VertexBuffer terrainVertexBuffer;
-        IndexBuffer terrainIndexBuffer;
+        VertexBuffer landVertexBuffer;
+        IndexBuffer sharedIndexBuffer;
         VertexMultitextured[] vertices;
         VertexPositionTexture[] waterVertices;
         int[] indices;
 
-        VertexMultitextured[] terrainVertices;
+        VertexMultitextured[] landVertices;
 
         Effect effect;
         Effect bbEffect;
@@ -86,12 +91,8 @@ namespace XNASeries4
         Texture2D waterBumpMap;
         Texture2D treeTexture;
 
-        VertexBuffer treeVertexBuffer;
-        VertexDeclaration treeVertexDeclaration;
-
         Model skyDome;
 
-        const float waterHeight = 10.0f; // this value is mostly an artifact of riemer's layer. mostly.
         RenderTarget2D refractionRenderTarget;
         Texture2D refractionMap;
 
@@ -101,84 +102,86 @@ namespace XNASeries4
         Vector3 windDirection = new Vector3(1, 0, 0);
 
         VertexBuffer waterVertexBuffer;
-        float waterExistenceThreshold = 0.001f;
-        float[] waterValueModel;
+        float waterExistenceThreshold = 0.0001f;
+
+        WaterAndSaturation[] waterValueModel;
 
         // config block
-        bool WireFramesOnly = true; // overwritten by input state
+        bool WireFramesOnly = false; // overwritten by input state
 
-        float emitterBaseStrength = 5.0f;
+        float emitterBaseStrength = 0.1f;
         float cursorEmitterStrength;
         float globalEmitterStrength;
 
-        float landMultStrength = 1.00f;
+        float landMultStrength = 1.10f;
         float uphillDampening = 0.6f;
         float downhillDampening = 0.6f;
 
-        float initialLandScale = 0.5f;
-        float waterGlobalValue = 0f;
-        string terrainTextureName = "rivermap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
+        float waterGlobalValue = 0.0f;
+        bool drainWaterFromEdges = true;
+        bool autoEmmiter = true;
+        string terrainTextureName = "tinymap"; // tinymap //"islandmap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
 
         // water stuff
         private void actionDrainWaterAll()
         {
-            for (int i = 0; i < terrainVertices.Length; i++)
+            for (int i = 0; i < landVertices.Length; i++)
             {
-                waterValueModel[i] -= globalEmitterStrength;
+                waterValueModel[i].waterValue -= globalEmitterStrength;
             }
         }
         private void actionEmitWaterAll()
         {
-            for (int i = 0; i < terrainVertices.Length; i++)
+            for (int i = 0; i < landVertices.Length; i++)
             {
-                waterValueModel[i] += globalEmitterStrength;
+                waterValueModel[i].waterValue += globalEmitterStrength;
             }
         }
         private void actionEmitWaterCursor()
         {
             int cursorSlot = findCursor();
-            waterValueModel[cursorSlot] += cursorEmitterStrength;
+            waterValueModel[cursorSlot].waterValue += cursorEmitterStrength;
+            waterValueModel[cursorSlot].saturationValue = Erosion.INITIAL_SATURATION;
         }
         private void actionDrainWaterCursor()
         {
             int cursorSlot = findCursor();
-            waterValueModel[cursorSlot] -= cursorEmitterStrength;
+            waterValueModel[cursorSlot].waterValue -= cursorEmitterStrength;
         }
         private void actionEliminateWater()
         {
             for (int i = 0; i < waterValueModel.Length; i++)
             {
-                waterValueModel[i] = 0;
+                waterValueModel[i].waterValue = 0;
+                waterValueModel[i].saturationValue = Erosion.INITIAL_SATURATION;
             }
         }
         private void actionTidalWave()
         {
             for (int i = 0; i < terrainWidth; i++)
             {
-                waterValueModel[i] += globalEmitterStrength * terrainLength;
+                waterValueModel[i].waterValue += globalEmitterStrength * terrainLength;
             }
         }
-
-
 
         // land stuff
         private void actionScaleLandUp()
         {
-            for (int i = 0; i < terrainVertices.Length; i++)
+            for (int i = 0; i < landVertices.Length; i++)
             {
-                terrainVertices[i].Position.Y *= landMultStrength; // scale appropriate to terrain
+                landVertices[i].Position.Y *= landMultStrength; // scale appropriate to terrain
             }
             device.SetVertexBuffer(null);
-            terrainVertexBuffer.SetData(terrainVertices);
+            landVertexBuffer.SetData(landVertices);
         }
         private void actionScaleLandDown()
         {
-            for (int i = 0; i < terrainVertices.Length; i++)
+            for (int i = 0; i < landVertices.Length; i++)
             {
-                terrainVertices[i].Position.Y *= 1 / landMultStrength; //reciprocal, yo!
+                landVertices[i].Position.Y *= 1 / landMultStrength; //reciprocal, yo!
             }
             device.SetVertexBuffer(null);
-            terrainVertexBuffer.SetData(terrainVertices);
+            landVertexBuffer.SetData(landVertices);
         }
         private void actionEmitLandCursor()
         {
@@ -186,11 +189,10 @@ namespace XNASeries4
             int cursorSlot = findCursor();
             float effectiveEmitterStrength = cursorEmitterStrength * 0.003f;
 
-            terrainVertices[cursorSlot].Position.Y += effectiveEmitterStrength; // scale appropriate to terrain
+            landVertices[cursorSlot].Position.Y += effectiveEmitterStrength; // scale appropriate to terrain
 
-            terrainVertexBuffer.SetData(terrainVertices);
+            landVertexBuffer.SetData(landVertices);
         }
-
 
         private void toggleWireFramesOnly()
         { // TODO implement better toggle feature through keyboard state
@@ -204,7 +206,7 @@ namespace XNASeries4
             return (targetSlot);
         }
 
-        public Game1()
+        public WaterSim()
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
@@ -254,15 +256,15 @@ namespace XNASeries4
             LoadVertices();
             LoadTextures();
 
-            cursorLocate = new CursorLocate();
+            cursorLocate = new CursorLocate(terrainWidth, terrainLength);
         }
 
         private void LoadVertices()
         {
             Texture2D heightMap = Content.Load<Texture2D>(terrainTextureName);
             LoadHeightData(heightMap);
-            VertexMultitextured[] terrainVertices = SetUpTerrainVertices();
-            int[] terrainIndices = SetUpTerrainIndices();
+            VertexMultitextured[] terrainVertices = SetUpLandVertices();
+            int[] terrainIndices = SetUpSharedIndices();
             terrainVertices = CalculateNormals(terrainVertices, terrainIndices);
             CopyToTerrainBuffers(terrainVertices, terrainIndices);
 
@@ -274,11 +276,12 @@ namespace XNASeries4
 
         private void LoadTextures()
         {
-            grassTexture = Content.Load<Texture2D>("grass");
+            
+            grassTexture = 
+            rockTexture = 
+            snowTexture = 
+            treeTexture =
             sandTexture = Content.Load<Texture2D>("sand");
-            rockTexture = Content.Load<Texture2D>("rock");
-            snowTexture = Content.Load<Texture2D>("snow");
-            treeTexture = Content.Load<Texture2D>("tree");
 
             cloudMap = Content.Load<Texture2D>("cloudMap");
             waterBumpMap = Content.Load<Texture2D>("waterbump");
@@ -286,8 +289,6 @@ namespace XNASeries4
 
         private void LoadHeightData(Texture2D heightMap)
         {
-            float minimumHeight = float.MaxValue;
-            float maximumHeight = float.MinValue;
 
             terrainWidth = heightMap.Width;
             terrainLength = heightMap.Height;
@@ -299,61 +300,47 @@ namespace XNASeries4
             for (int x = 0; x < terrainWidth; x++)
                 for (int y = 0; y < terrainLength; y++)
                 {
-                    heightData[x, y] = heightMapColors[x + y * terrainWidth].R;
-                    if (heightData[x, y] < minimumHeight) minimumHeight = heightData[x, y];
-                    if (heightData[x, y] > maximumHeight) maximumHeight = heightData[x, y];
+                    heightData[x, y] = (heightMapColors[x + y * terrainWidth].R / 255f) * 30f;
                 }
 
-            for (int x = 0; x < terrainWidth; x++)
-                for (int y = 0; y < terrainLength; y++)
-                    heightData[x, y] = (heightData[x, y] - minimumHeight) / (maximumHeight - minimumHeight) * 30.0f * initialLandScale;
         }
 
-        private VertexMultitextured[] SetUpTerrainVertices()
+        private VertexMultitextured[] SetUpLandVertices()
         {
-            terrainVertices = new VertexMultitextured[terrainWidth * terrainLength];
+            landVertices = new VertexMultitextured[terrainWidth * terrainLength];
             vertices = new VertexMultitextured[terrainWidth * terrainLength];
 
             for (int x = 0; x < terrainWidth; x++)
             {
                 for (int y = 0; y < terrainLength; y++)
                 {
-                    terrainVertices[x + y * terrainWidth].Position = new Vector3(x, heightData[x, y], -y);
-                    terrainVertices[x + y * terrainWidth].TextureCoordinate.X = (float)x / 30.0f;
-                    terrainVertices[x + y * terrainWidth].TextureCoordinate.Y = (float)y / 30.0f;
+                    int cellIndex = x + y * terrainWidth;
 
-                    terrainVertices[x + y * terrainWidth].TexWeights.X = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 0) / 8.0f, 0, 1);
-                    terrainVertices[x + y * terrainWidth].TexWeights.Y = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 12) / 6.0f, 0, 1);
-                    terrainVertices[x + y * terrainWidth].TexWeights.Z = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 20) / 6.0f, 0, 1);
-                    terrainVertices[x + y * terrainWidth].TexWeights.W = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 30) / 6.0f, 0, 1);
+                    landVertices[cellIndex].Position = new Vector3(x, heightData[x, y], -y);
+                    landVertices[cellIndex].TextureCoordinate.X = (float)x / 30.0f;
+                    landVertices[cellIndex].TextureCoordinate.Y = (float)y / 30.0f;
 
-                    float total = terrainVertices[x + y * terrainWidth].TexWeights.X;
-                    total += terrainVertices[x + y * terrainWidth].TexWeights.Y;
-                    total += terrainVertices[x + y * terrainWidth].TexWeights.Z;
-                    total += terrainVertices[x + y * terrainWidth].TexWeights.W;
+                    landVertices[cellIndex].TexWeights.X = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 0) / 8.0f, 0, 1);
+                    landVertices[cellIndex].TexWeights.Y = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 12) / 6.0f, 0, 1);
+                    landVertices[cellIndex].TexWeights.Z = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 20) / 6.0f, 0, 1);
+                    landVertices[cellIndex].TexWeights.W = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 30) / 6.0f, 0, 1);
 
-                    terrainVertices[x + y * terrainWidth].TexWeights.X /= total;
-                    terrainVertices[x + y * terrainWidth].TexWeights.Y /= total;
-                    terrainVertices[x + y * terrainWidth].TexWeights.Z /= total;
-                    terrainVertices[x + y * terrainWidth].TexWeights.W /= total;
+                    float total = landVertices[cellIndex].TexWeights.X;
+                    total += landVertices[cellIndex].TexWeights.Y;
+                    total += landVertices[cellIndex].TexWeights.Z;
+                    total += landVertices[cellIndex].TexWeights.W;
+
+                    landVertices[cellIndex].TexWeights.X /= total;
+                    landVertices[cellIndex].TexWeights.Y /= total;
+                    landVertices[cellIndex].TexWeights.Z /= total;
+                    landVertices[cellIndex].TexWeights.W /= total;
                 }
             }
 
-            return terrainVertices;
+            return landVertices;
         }
 
-        private List<Vector3> GenerateTreePositions(VertexMultitextured[] terrainVertices)
-        {
-            List<Vector3> treeList = new List<Vector3>();
-            treeList.Add(terrainVertices[3310].Position);
-            treeList.Add(terrainVertices[3315].Position);
-            treeList.Add(terrainVertices[3320].Position);
-            treeList.Add(terrainVertices[3325].Position);
-
-            return treeList;
-        }
-
-        private int[] SetUpTerrainIndices()
+        private int[] SetUpSharedIndices()
         {
             int counter = 0;
             indices = new int[(terrainWidth - 1) * (terrainLength - 1) * 6];
@@ -411,28 +398,28 @@ namespace XNASeries4
 
             VertexDeclaration vertexDeclaration = new VertexDeclaration(VertexMultitextured.VertexElements);
 
-            terrainVertexBuffer = new VertexBuffer(device, vertexDeclaration, vertices.Length, BufferUsage.WriteOnly);
-            terrainVertexBuffer.SetData(vertices.ToArray());
+            landVertexBuffer = new VertexBuffer(device, vertexDeclaration, vertices.Length, BufferUsage.WriteOnly);
+            landVertexBuffer.SetData(vertices.ToArray());
 
-            terrainIndexBuffer = new IndexBuffer(device, typeof(int), indices.Length, BufferUsage.WriteOnly);
-            terrainIndexBuffer.SetData(indices);
+            sharedIndexBuffer = new IndexBuffer(device, typeof(int), indices.Length, BufferUsage.WriteOnly);
+            sharedIndexBuffer.SetData(indices);
         }
 
         private void SetUpWaterVertices()
         {
             waterVertices = new VertexPositionTexture[terrainWidth * terrainLength];
-            waterValueModel = new float[terrainWidth * terrainLength];
+            waterValueModel = new WaterAndSaturation[terrainWidth * terrainLength];
 
             for (int x = 0; x < terrainWidth; x++)
             {
                 for (int y = 0; y < terrainLength; y++)
                 {
-                    waterValueModel[x + y * terrainWidth] = waterGlobalValue;
+                    waterValueModel[x + y * terrainWidth].waterValue = waterGlobalValue;
                     waterVertices[x + y * terrainWidth] = new VertexPositionTexture(
                         new Vector3(
-                            (terrainVertices[x + y * terrainWidth].Position.X),
+                            (landVertices[x + y * terrainWidth].Position.X),
                             0.0f, // base value, actually set in update loop
-                            (terrainVertices[x + y * terrainWidth].Position.Z)
+                            (landVertices[x + y * terrainWidth].Position.Z)
                             ),
                         new Vector2(x / terrainWidth, y / terrainLength)
                     );
@@ -442,12 +429,6 @@ namespace XNASeries4
             waterVertexBuffer = new VertexBuffer(GraphicsDevice, VertexPositionTexture.VertexDeclaration, waterVertices.Count(), BufferUsage.WriteOnly);
 
             waterVertexBuffer.SetData(waterVertices);
-        }
-
-
-
-        protected override void UnloadContent()
-        {
         }
 
         protected override void Update(GameTime gameTime)
@@ -469,22 +450,18 @@ namespace XNASeries4
             if (keyboardState.IsKeyDown(Keys.K)) actionScaleLandDown();
             if (keyboardState.IsKeyDown(Keys.Y)) actionEmitLandCursor();
 
-
-            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)
-                this.Exit();
-
             float timeDifference = (float)gameTime.ElapsedGameTime.TotalMilliseconds / 1000.0f;
             ProcessInput(timeDifference);
             UpdateWaterModel();
-            UpdateWater();
+            UpdateWaterAndLand();
+
+            if (autoEmmiter) actionEmitWaterCursor();
 
             base.Update(gameTime);
         }
 
         private void UpdateWaterModel()
         {
-            // this section is for the emitter
-
             // this section is to resolve it all
             float cellWater, cellLand, cellTotal;
             int cellSlot;
@@ -496,17 +473,18 @@ namespace XNASeries4
             {
                 for (int z = 0; z < terrainLength; z++)
                 {
-
                     lowestNeighborValue = 1000000.0f; // set artificially very high
                     lowestNeighborSlot = -1; // used as a default flag not to process water
 
                     cellSlot = x + z * terrainWidth;
-                    cellWater = waterValueModel[cellSlot];
-                    cellLand = terrainVertices[cellSlot].Position.Y;
+                    cellWater = waterValueModel[cellSlot].waterValue;
+                    cellLand = landVertices[cellSlot].Position.Y;
                     cellTotal = cellWater + cellLand;
 
                     float waterDelta;
                     float flowDampening; // set every iteration based on choice of behavior
+
+                    float verticalChangeForCell = 0;
 
                     if (cellWater > waterExistenceThreshold)
                     { // if there is water here to process
@@ -520,8 +498,8 @@ namespace XNASeries4
                                 { // array bounds check
                                     if (cellSlot != checkSlot)
                                     { // skip the self cell case
-                                        checkWater = waterValueModel[checkSlot];
-                                        checkLand = terrainVertices[checkSlot].Position.Y;
+                                        checkWater = waterValueModel[checkSlot].waterValue;
+                                        checkLand = landVertices[checkSlot].Position.Y;
                                         checkTotal = checkWater + checkLand;
                                         if (checkTotal <= cellTotal)
                                         {
@@ -538,51 +516,61 @@ namespace XNASeries4
 
                         if (lowestNeighborSlot > -1)
                         { // we found a lower neighbor in our pass
-                            if (terrainVertices[lowestNeighborSlot].Position.Y > cellLand)
+                            if (landVertices[lowestNeighborSlot].Position.Y > cellLand)
                                 flowDampening = downhillDampening;
                             else
                                 flowDampening = uphillDampening;
 
                             float idealLevel =
                                 (cellTotal +
-                                (waterValueModel[lowestNeighborSlot] + terrainVertices[lowestNeighborSlot].Position.Y))
+                                (waterValueModel[lowestNeighborSlot].waterValue + landVertices[lowestNeighborSlot].Position.Y))
                                 / 2;
-                            idealLevel -= terrainVertices[cellSlot].Position.Y; // adjust for land presence
+                            idealLevel -= landVertices[cellSlot].Position.Y; // adjust for land presence
 
                             waterDelta = (cellWater - idealLevel) * flowDampening;
 
-                            waterValueModel[cellSlot] -= waterDelta;
-                            waterValueModel[lowestNeighborSlot] += waterDelta;
+                            waterValueModel[cellSlot].waterValue -= waterDelta;
+                            waterValueModel[lowestNeighborSlot].waterValue += waterDelta;
                             cellWater -= waterDelta;
+
+                            float cellSaturationAverage = (waterValueModel[lowestNeighborSlot].saturationValue + waterValueModel[cellSlot].saturationValue) / 2;
+                            waterValueModel[lowestNeighborSlot].saturationValue = cellSaturationAverage * 1.5f;
+                            waterValueModel[cellSlot].saturationValue = cellSaturationAverage * 0.5f;
+
+                            verticalChangeForCell = cellTotal - (waterValueModel[lowestNeighborSlot].waterValue + landVertices[lowestNeighborSlot].Position.Y);
+
+                            Erosion.PerformErosion(
+                                ref waterValueModel[lowestNeighborSlot].waterValue,
+                                ref waterValueModel[lowestNeighborSlot].saturationValue,
+                                ref landVertices[lowestNeighborSlot].Position.Y,
+                                verticalChangeForCell
+                            );
                         }
-
-
                     }
                 }
             }
-        }
 
-
-        private void CreateBillboardVerticesFromList(List<Vector3> treeList)
-        {
-            VertexPositionTexture[] billboardVertices = new VertexPositionTexture[treeList.Count * 6];
-            int i = 0;
-            foreach (Vector3 currentV3 in treeList)
+            if (drainWaterFromEdges)
             {
-                billboardVertices[i++] = new VertexPositionTexture(currentV3, new Vector2(0, 0));
-                billboardVertices[i++] = new VertexPositionTexture(currentV3, new Vector2(1, 0));
-                billboardVertices[i++] = new VertexPositionTexture(currentV3, new Vector2(1, 1));
-
-                billboardVertices[i++] = new VertexPositionTexture(currentV3, new Vector2(0, 0));
-                billboardVertices[i++] = new VertexPositionTexture(currentV3, new Vector2(1, 1));
-                billboardVertices[i++] = new VertexPositionTexture(currentV3, new Vector2(0, 1));
+                for (int x = 0; x < terrainWidth; x++)
+                {
+                    // top edge
+                    waterValueModel[x + 0].waterValue = waterGlobalValue;
+                    waterValueModel[x + 0].saturationValue = Erosion.INITIAL_SATURATION;
+                    // bottom edge
+                    waterValueModel[x + terrainWidth*(terrainLength-1)].waterValue = waterGlobalValue;
+                    waterValueModel[x + terrainWidth * (terrainLength - 1)].saturationValue = Erosion.INITIAL_SATURATION;
+                }
+                for (int z = 0; z < terrainLength; z++)
+                {
+                    // left edge
+                    waterValueModel[0 + z * terrainWidth].waterValue = waterGlobalValue;
+                    waterValueModel[0 + z * terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
+                    // right edge
+                    waterValueModel[(terrainLength-1) + z * terrainWidth].waterValue = waterGlobalValue;
+                    waterValueModel[(terrainLength-1) + z * terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
+                }
             }
-
-            VertexDeclaration vertexDeclaration = VertexPositionTexture.VertexDeclaration;
-
-            treeVertexBuffer = new VertexBuffer(device, vertexDeclaration, billboardVertices.Length, BufferUsage.WriteOnly);
-            treeVertexBuffer.SetData(billboardVertices);
-            treeVertexDeclaration = vertexDeclaration;
         }
 
         private void ProcessInput(float amount)
@@ -669,7 +657,7 @@ namespace XNASeries4
         {
             float time = (float)gameTime.TotalGameTime.TotalMilliseconds / 100.0f;
             RasterizerState rs = new RasterizerState();
-            if (!WireFramesOnly)
+            if (WireFramesOnly)
             {
                 rs.FillMode = FillMode.WireFrame;
             }
@@ -713,8 +701,8 @@ namespace XNASeries4
             {
                 pass.Apply();
 
-                device.Indices = terrainIndexBuffer;
-                device.SetVertexBuffer(terrainVertexBuffer);
+                device.Indices = sharedIndexBuffer;
+                device.SetVertexBuffer(landVertexBuffer);
 
                 device.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, vertices.Length, 0, indices.Length / 3);
 
@@ -744,8 +732,6 @@ namespace XNASeries4
             GraphicsDevice.BlendState = BlendState.Opaque;
             GraphicsDevice.DepthStencilState = DepthStencilState.Default;
         }
-
-
 
         private Plane CreatePlane(float height, Vector3 planeNormalDirection, Matrix currentViewMatrix, bool clipSide)
         {
@@ -816,7 +802,7 @@ namespace XNASeries4
             //device.SetVertexBuffer(waterVertexBuffer);
             //device.DrawPrimitives(PrimitiveType.TriangleList, 0, waterVertexBuffer.VertexCount / 3);
 
-            device.Indices = terrainIndexBuffer;
+            device.Indices = sharedIndexBuffer;
             device.SetVertexBuffer(waterVertexBuffer);
 
             //BlendState blendState = new BlendState();
@@ -830,50 +816,36 @@ namespace XNASeries4
             device.BlendState = BlendState.Opaque;
         }
 
-        private void DrawBillboards(Matrix currentViewMatrix)
-        {
-            bbEffect.CurrentTechnique = bbEffect.Techniques["CylBillboard"];
-            bbEffect.Parameters["xWorld"].SetValue(Matrix.Identity);
-            bbEffect.Parameters["xView"].SetValue(currentViewMatrix);
-            bbEffect.Parameters["xProjection"].SetValue(projectionMatrix);
-            bbEffect.Parameters["xCamPos"].SetValue(cameraPosition);
-            bbEffect.Parameters["xAllowedRotDir"].SetValue(new Vector3(0, 1, 0));
-            bbEffect.Parameters["xBillboardTexture"].SetValue(treeTexture);
-
-            device.BlendState = BlendState.AlphaBlend;
-            foreach (EffectPass pass in bbEffect.CurrentTechnique.Passes)
-            {
-                pass.Apply();
-                device.SetVertexBuffer(treeVertexBuffer);
-                int noVertices = treeVertexBuffer.VertexCount;
-                int noTriangles = noVertices / 3;
-                device.DrawPrimitives(PrimitiveType.TriangleList, 0, noTriangles);
-            }
-            device.BlendState = BlendState.Opaque;
-        }
-
-        private void UpdateWater()
+        private void UpdateWaterAndLand()
         {
             float waterModelValue;
             float landModelValue;
 
             float waterOffset = 0.1f;
 
+            device.SetVertexBuffer(null); // so we can pass modified geometry to it
+
             for (int x = 0; x < terrainWidth; x++)
             {
                 for (int y = 0; y < terrainLength; y++)
                 {
-                    waterModelValue = waterValueModel[x + y * terrainWidth];
-                    landModelValue = terrainVertices[x + y * terrainWidth].Position.Y;
+                    int cellIndex = x + y * terrainWidth;
 
-                    if (waterModelValue < waterExistenceThreshold)
-                        waterVertices[x + y * terrainWidth].Position.Y = -1.0f;
+                    waterModelValue = waterValueModel[cellIndex].waterValue;
+                    landModelValue = landVertices[cellIndex].Position.Y;
+
+                    if (waterModelValue > waterExistenceThreshold)
+                    {
+                        waterVertices[cellIndex].Position.Y = waterModelValue + landModelValue + waterOffset;
+                    }
                     else
-                        waterVertices[x + y * terrainWidth].Position.Y = waterModelValue + landModelValue + waterOffset;
+                    {
+                        waterVertices[cellIndex].Position.Y = -1.0f;
+                    }
                 }
             }
 
-            device.SetVertexBuffer(null);
+            landVertexBuffer.SetData(landVertices);
             waterVertexBuffer.SetData(waterVertices);
         }
 
