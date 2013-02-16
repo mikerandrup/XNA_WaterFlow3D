@@ -119,7 +119,7 @@ namespace XNASeries4
 
         float waterGlobalValue = 0.0f;
         bool drainWaterFromEdges = true;
-        bool autoEmmiter = true;
+        bool autoEmmiter = false;
         string terrainTextureName = "tinymap"; // tinymap //"islandmap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
 
         // water stuff
@@ -130,6 +130,25 @@ namespace XNASeries4
                 waterValueModel[i].waterValue -= globalEmitterStrength;
             }
         }
+
+        private void actionResetState()
+        {
+            autoEmmiter = false;
+
+            for (int x = 0; x < terrainWidth; x++)
+            {
+                for (int y = 0; y < terrainLength; y++)
+                {
+                    int cellIndex = x + y * terrainWidth;
+                    landVertices[cellIndex].Position.Y = heightData[x, y];
+                }
+            }
+
+            device.SetVertexBuffer(null);
+            landVertexBuffer.SetData(landVertices);
+        }
+
+
         private void actionEmitWaterAll()
         {
             for (int i = 0; i < landVertices.Length; i++)
@@ -139,6 +158,10 @@ namespace XNASeries4
         }
         private void actionEmitWaterCursor()
         {
+
+            autoEmmiter = true;
+
+
             int cursorSlot = findCursor();
             waterValueModel[cursorSlot].waterValue += cursorEmitterStrength;
             waterValueModel[cursorSlot].saturationValue = Erosion.INITIAL_SATURATION;
@@ -214,9 +237,9 @@ namespace XNASeries4
 
         protected override void Initialize()
         {
-            IsMouseVisible = true;
-            graphics.PreferredBackBufferWidth = 1024;
-            graphics.PreferredBackBufferHeight = 768;
+            IsMouseVisible = false;
+            graphics.PreferredBackBufferWidth = 640;
+            graphics.PreferredBackBufferHeight = 480;
 
             //this.graphics.IsFullScreen = true;
 
@@ -267,9 +290,6 @@ namespace XNASeries4
             int[] terrainIndices = SetUpSharedIndices();
             terrainVertices = CalculateNormals(terrainVertices, terrainIndices);
             CopyToTerrainBuffers(terrainVertices, terrainIndices);
-
-            //List<Vector3> treeList = GenerateTreePositions(terrainVertices);
-            //CreateBillboardVerticesFromList(treeList);
 
             SetUpWaterVertices();
         }
@@ -438,6 +458,8 @@ namespace XNASeries4
             if (keyboardState.IsKeyDown(Keys.Escape)) this.Exit();
 
             if (keyboardState.IsKeyDown(Keys.OemPeriod)) toggleWireFramesOnly();
+
+            if (keyboardState.IsKeyDown(Keys.R)) actionResetState();
 
             if (keyboardState.IsKeyDown(Keys.T)) actionEmitWaterCursor();
             if (keyboardState.IsKeyDown(Keys.G)) actionDrainWaterCursor();

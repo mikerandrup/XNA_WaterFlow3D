@@ -15,7 +15,7 @@ namespace XNAseries4
         private const float HEIGHT_MOVED_DEPOSIT_THRESHOLD = 0.15f;
         private const float MINIMUM_LAND_VALUE = 0.0f;
 
-        private static float BASE_STEP_AMOUNT = 0.0025f;
+        private static float BASE_STEP_AMOUNT = 0.025f;
         private static float DISSOLVE_STEP_AMOUNT = BASE_STEP_AMOUNT * 0.5f;
         private static float DEPOSIT_STEP_AMOUNT = BASE_STEP_AMOUNT * 1.1f;
 
