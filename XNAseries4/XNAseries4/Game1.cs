@@ -11,6 +11,9 @@ using Microsoft.Xna.Framework.Media;
 using System.Diagnostics;
 using XNAseries4;
 
+//TODO: Refactor this mega class
+//TODO: remove shader and other code from tutorial that aren't used
+
 namespace XNASeries4
 {
     public struct WaterAndSaturation
@@ -301,7 +304,7 @@ namespace XNASeries4
             rockTexture = 
             snowTexture = 
             treeTexture =
-            sandTexture = Content.Load<Texture2D>("sand");
+            sandTexture = Content.Load<Texture2D>("beachsand");
 
             cloudMap = Content.Load<Texture2D>("cloudMap");
             waterBumpMap = Content.Load<Texture2D>("waterbump");
@@ -810,9 +813,6 @@ namespace XNASeries4
             effect.Parameters["xReflectionView"].SetValue(reflectionViewMatrix);
             effect.Parameters["xProjection"].SetValue(projectionMatrix);
             effect.Parameters["xReflectionMap"].SetValue(reflectionMap);
-            //effect.Parameters["xRefractionMap"].SetValue(refractionMap);
-            effect.Parameters["xWaterBumpMap"].SetValue(waterBumpMap);
-            //effect.Parameters["xWaterBumpMap"].SetValue(waterBumpMap);
             effect.Parameters["xWaveLength"].SetValue(0.1f);
             effect.Parameters["xWaveHeight"].SetValue(0.3f);
             effect.Parameters["xTime"].SetValue(time);
