@@ -42,133 +42,128 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="bbEffect.fx">
+    <Compile Include="shaders\bbEffect.fx">
       <Name>bbEffect</Name>
       <Importer>EffectImporter</Importer>
       <Processor>EffectProcessor</Processor>
     </Compile>
-    <Compile Include="dome.x">
+    <Compile Include="geometry\dome.x">
       <Name>dome</Name>
       <Importer>XImporter</Importer>
       <Processor>ModelProcessor</Processor>
     </Compile>
-    <Compile Include="grass.dds">
+    <Compile Include="textures\grass.dds">
       <Name>grass</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="rock.dds">
+    <Compile Include="textures\rock.dds">
       <Name>rock</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="sand.dds">
+    <Compile Include="textures\sand.dds">
       <Name>sand</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="Series4Effects.fx">
+    <Compile Include="shaders\Series4Effects.fx">
       <Name>Series4Effects</Name>
       <Importer>EffectImporter</Importer>
       <Processor>EffectProcessor</Processor>
     </Compile>
-    <Compile Include="snow.dds">
+    <Compile Include="textures\snow.dds">
       <Name>snow</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="tree.dds">
+    <Compile Include="textures\tree.dds">
       <Name>tree</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="waterbump.dds">
+    <Compile Include="textures\waterbump.dds">
       <Name>waterbump</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="cloudMap.jpg">
+    <Compile Include="textures\cloudMap.jpg">
       <Name>cloudMap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="heightmap %281%29.bmp">
+    <Compile Include="heightmaps\heightmap %281%29.bmp">
       <Name>heightmap</Name>
-      <Importer>TextureImporter</Importer>
-      <Processor>TextureProcessor</Processor>
-    </Compile>
-    <Compile Include="treeMap.jpg">
-      <Name>treeMap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="islandmap.bmp">
+    <Compile Include="heightmaps\islandmap.bmp">
       <Name>islandmap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="rivermap.bmp">
+    <Compile Include="heightmaps\rivermap.bmp">
       <Name>rivermap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="thankyou.bmp">
+    <Compile Include="heightmaps\thankyou.bmp">
       <Name>thankyou</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="valleymap.bmp">
+    <Compile Include="heightmaps\valleymap.bmp">
       <Name>valleymap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="fractalmap.bmp">
+    <Compile Include="heightmaps\fractalmap.bmp">
       <Name>fractalmap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="stairsmap.bmp">
+    <Compile Include="heightmaps\stairsmap.bmp">
       <Name>stairsmap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="mazemap.bmp">
+    <Compile Include="heightmaps\mazemap.bmp">
       <Name>mazemap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="mazemap2.bmp">
+    <Compile Include="heightmaps\mazemap2.bmp">
       <Name>mazemap2</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="tinymap.bmp">
+    <Compile Include="heightmaps\tinymap.bmp">
       <Name>tinymap</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="beachsand.jpg">
+    <Compile Include="textures\beachsand.jpg">
       <Name>beachsand</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
     </Compile>
-    <Compile Include="tropicalwater.jpg">
+    <Compile Include="textures\tropicalwater.jpg">
       <Name>tropicalwater</Name>
       <Importer>TextureImporter</Importer>
       <Processor>TextureProcessor</Processor>
