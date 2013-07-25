@@ -9,7 +9,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
 using System.Diagnostics;
-using XNAseries4;
+using WaterFlowSim;
 
 //TODO: Refactor this mega class
 //TODO: remove shader and other code from tutorial that aren't used
@@ -123,7 +123,7 @@ namespace WaterFlowSim
         float waterGlobalValue = 0.0f;
         bool drainWaterFromEdges = true;
         bool autoEmmiter = false;
-        string terrainTextureName = "tinymap"; // tinymap //"islandmap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
+        string terrainTextureName = @"heightmaps\tinymap"; // tinymap //"islandmap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
 
         // water stuff
         private void actionDrainWaterAll()
@@ -261,13 +261,13 @@ namespace WaterFlowSim
         {
             device = GraphicsDevice;
 
-            effect = Content.Load<Effect>("Series4Effects");
+            effect = Content.Load<Effect>("shaders/Series4Effects");
             UpdateViewMatrix();
 
             viewMatrix = Matrix.CreateLookAt(new Vector3(130, 30, -50), new Vector3(0, 0, -40), new Vector3(0, 1, 0));
             projectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.PiOver4, device.Viewport.AspectRatio, 0.3f, 1000.0f);
 
-            skyDome = Content.Load<Model>("dome"); skyDome.Meshes[0].MeshParts[0].Effect = effect.Clone();
+            skyDome = Content.Load<Model>("geometry/dome"); skyDome.Meshes[0].MeshParts[0].Effect = effect.Clone();
 
             PresentationParameters pp = device.PresentationParameters;
             refractionRenderTarget = new RenderTarget2D(device, pp.BackBufferWidth, pp.BackBufferHeight, false, pp.BackBufferFormat, pp.DepthStencilFormat);
@@ -277,7 +277,7 @@ namespace WaterFlowSim
             Mouse.SetPosition(device.Viewport.Width / 2, device.Viewport.Height / 2);
             originalMouseState = Mouse.GetState();
 
-            bbEffect = Content.Load<Effect>("bbEffect");
+            bbEffect = Content.Load<Effect>("shaders/bbEffect");
 
             LoadVertices();
             LoadTextures();
@@ -304,10 +304,10 @@ namespace WaterFlowSim
             rockTexture = 
             snowTexture = 
             treeTexture =
-            sandTexture = Content.Load<Texture2D>("beachsand");
+            sandTexture = Content.Load<Texture2D>("textures/beachsand");
 
-            cloudMap = Content.Load<Texture2D>("cloudMap");
-            waterBumpMap = Content.Load<Texture2D>("waterbump");
+            cloudMap = Content.Load<Texture2D>("textures/cloudMap");
+            waterBumpMap = Content.Load<Texture2D>("textures/waterbump");
         }
 
         private void LoadHeightData(Texture2D heightMap)
