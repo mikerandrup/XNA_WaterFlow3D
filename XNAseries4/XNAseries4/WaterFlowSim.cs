@@ -1,256 +1,80 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
-using Microsoft.Xna.Framework.Content;
-using Microsoft.Xna.Framework.GamerServices;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using Microsoft.Xna.Framework.Media;
-using System.Diagnostics;
-using WaterFlowSim;
+using WaterFlowSim.WaterFlowCore;
+using WaterFlowSim.WaterFlowCore.Control;
+using WaterFlowSim.Control;
 
 //TODO: Refactor this mega class
 //TODO: remove shader and other code from tutorial that aren't used
 
 namespace WaterFlowSim
 {
-    public struct WaterAndSaturation
-    {
-        public float waterValue;
-        public float saturationValue;
-    }
-
-    public struct VertexPositionNormalTexture
-    {
-        public Vector3 Position;
-        public Color Color;
-        public Vector3 Normal;
-
-        public static int SizeInBytes = 7 * 4;
-        public readonly static VertexDeclaration VertexDeclaration = new VertexDeclaration
-              (
-                  new VertexElement(0, VertexElementFormat.Vector3, VertexElementUsage.Position, 0),
-                  new VertexElement(sizeof(float) * 3, VertexElementFormat.Color, VertexElementUsage.Color, 0),
-                  new VertexElement(sizeof(float) * 3 + 4, VertexElementFormat.Vector3, VertexElementUsage.Normal, 0)
-              );
-    }
-
-    public struct VertexMultitextured
-    {
-        public Vector3 Position;
-        public Vector3 Normal;
-        public Vector4 TextureCoordinate;
-        public Vector4 TexWeights;
-
-        public static int SizeInBytes = (3 + 3 + 4 + 4) * sizeof(float);
-        public static VertexElement[] VertexElements = new VertexElement[] {
-         new VertexElement(  0, VertexElementFormat.Vector3, VertexElementUsage.Position, 0 ),
-         new VertexElement(  sizeof(float) * 3, VertexElementFormat.Vector3, VertexElementUsage.Normal, 0 ),
-         new VertexElement(  sizeof(float) * 6, VertexElementFormat.Vector4, VertexElementUsage.TextureCoordinate, 0 ),
-         new VertexElement(  sizeof(float) * 10, VertexElementFormat.Vector4, VertexElementUsage.TextureCoordinate, 1 ),
-     };
-    }
-
     public class WaterSim : Microsoft.Xna.Framework.Game
     {
-        GraphicsDeviceManager graphics;
-        GraphicsDevice device;
-
-        int terrainWidth;
-        int terrainLength;
-        float[,] heightData;
-
-        VertexBuffer landVertexBuffer;
-        IndexBuffer sharedIndexBuffer;
-        VertexMultitextured[] vertices;
-        VertexPositionTexture[] waterVertices;
-        int[] indices;
-
-        VertexMultitextured[] landVertices;
-
-        Effect effect;
-        Effect bbEffect;
-
-        Matrix viewMatrix;
-        Matrix projectionMatrix;
-        Matrix reflectionViewMatrix;
-
-        CursorLocate cursorLocate;
-
-        Vector3 cameraPosition = new Vector3(130, 30, -50);
-        float leftrightRot = MathHelper.PiOver2;
-        float updownRot = -MathHelper.Pi / 10.0f;
-        const float rotationSpeed = 0.1f;
-        const float moveSpeed = 30.0f;
-        MouseState originalMouseState;
-
-        Texture2D grassTexture;
-        Texture2D sandTexture;
-        Texture2D rockTexture;
-        Texture2D snowTexture;
-        Texture2D cloudMap;
-        Texture2D waterBumpMap;
-        Texture2D treeTexture;
-
-        Model skyDome;
-
-        RenderTarget2D refractionRenderTarget;
-        Texture2D refractionMap;
-
-        RenderTarget2D reflectionRenderTarget;
-        Texture2D reflectionMap;
-
-        Vector3 windDirection = new Vector3(1, 0, 0);
-
-        VertexBuffer waterVertexBuffer;
-        float waterExistenceThreshold = 0.0001f;
-
-        WaterAndSaturation[] waterValueModel;
-
-        // config block
-        bool WireFramesOnly = false; // overwritten by input state
-
-        float emitterBaseStrength = 0.1f;
-        float cursorEmitterStrength;
-        float globalEmitterStrength;
-
-        float landMultStrength = 1.10f;
-        float uphillDampening = 0.6f;
-        float downhillDampening = 0.6f;
-
-        float waterGlobalValue = 0.0f;
-        bool drainWaterFromEdges = true;
-        bool autoEmmiter = false;
-        string terrainTextureName = @"heightmaps\tinymap"; // tinymap //"islandmap"; //thankyou, islandmap, rivermap, fractalmap, stairsmap, mazemap, mazemap2, valleymap
-
-        // water stuff
-        private void actionDrainWaterAll()
-        {
-            for (int i = 0; i < landVertices.Length; i++)
-            {
-                waterValueModel[i].waterValue -= globalEmitterStrength;
-            }
-        }
-
-        private void actionResetState()
-        {
-            autoEmmiter = false;
-
-            for (int x = 0; x < terrainWidth; x++)
-            {
-                for (int y = 0; y < terrainLength; y++)
-                {
-                    int cellIndex = x + y * terrainWidth;
-                    landVertices[cellIndex].Position.Y = heightData[x, y];
-                }
-            }
-
-            device.SetVertexBuffer(null);
-            landVertexBuffer.SetData(landVertices);
-        }
-
-
-        private void actionEmitWaterAll()
-        {
-            for (int i = 0; i < landVertices.Length; i++)
-            {
-                waterValueModel[i].waterValue += globalEmitterStrength;
-            }
-        }
-        private void actionEmitWaterCursor()
-        {
-
-            autoEmmiter = true;
-
-
-            int cursorSlot = findCursor();
-            waterValueModel[cursorSlot].waterValue += cursorEmitterStrength;
-            waterValueModel[cursorSlot].saturationValue = Erosion.INITIAL_SATURATION;
-        }
-        private void actionDrainWaterCursor()
-        {
-            int cursorSlot = findCursor();
-            waterValueModel[cursorSlot].waterValue -= cursorEmitterStrength;
-        }
-        private void actionEliminateWater()
-        {
-            for (int i = 0; i < waterValueModel.Length; i++)
-            {
-                waterValueModel[i].waterValue = 0;
-                waterValueModel[i].saturationValue = Erosion.INITIAL_SATURATION;
-            }
-        }
-        private void actionTidalWave()
-        {
-            for (int i = 0; i < terrainWidth; i++)
-            {
-                waterValueModel[i].waterValue += globalEmitterStrength * terrainLength;
-            }
-        }
+        GeometryAndSettings _geometryAndSettings;
+        WaterControl _waterControl;
 
         // land stuff
         private void actionScaleLandUp()
         {
-            for (int i = 0; i < landVertices.Length; i++)
+            for (int i = 0; i < _geometryAndSettings.landVertices.Length; i++)
             {
-                landVertices[i].Position.Y *= landMultStrength; // scale appropriate to terrain
+                _geometryAndSettings.landVertices[i].Position.Y *= _geometryAndSettings.landMultStrength; // scale appropriate to terrain
             }
-            device.SetVertexBuffer(null);
-            landVertexBuffer.SetData(landVertices);
+            _geometryAndSettings.device.SetVertexBuffer(null);
+            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
         }
         private void actionScaleLandDown()
         {
-            for (int i = 0; i < landVertices.Length; i++)
+            for (int i = 0; i < _geometryAndSettings.landVertices.Length; i++)
             {
-                landVertices[i].Position.Y *= 1 / landMultStrength; //reciprocal, yo!
+                _geometryAndSettings.landVertices[i].Position.Y *= 1 / _geometryAndSettings.landMultStrength; //reciprocal, yo!
             }
-            device.SetVertexBuffer(null);
-            landVertexBuffer.SetData(landVertices);
+            _geometryAndSettings.device.SetVertexBuffer(null);
+            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
         }
         private void actionEmitLandCursor()
         {
 
-            int cursorSlot = findCursor();
-            float effectiveEmitterStrength = cursorEmitterStrength * 0.003f;
+            int cursorSlot = _geometryAndSettings.findCursor();
+            float effectiveEmitterStrength = _geometryAndSettings.cursorEmitterStrength * 0.003f;
 
-            landVertices[cursorSlot].Position.Y += effectiveEmitterStrength; // scale appropriate to terrain
+            _geometryAndSettings.landVertices[cursorSlot].Position.Y += effectiveEmitterStrength; // scale appropriate to terrain
 
-            landVertexBuffer.SetData(landVertices);
+            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
         }
 
         private void toggleWireFramesOnly()
         { // TODO implement better toggle feature through keyboard state
-            if (WireFramesOnly) WireFramesOnly = false;
-            else WireFramesOnly = true;
-        }
-
-        private int findCursor()
-        {
-            int targetSlot = cursorLocate.xLoc + (cursorLocate.zLoc * terrainLength);
-            return (targetSlot);
+            if (_geometryAndSettings.WireFramesOnly) _geometryAndSettings.WireFramesOnly = false;
+            else _geometryAndSettings.WireFramesOnly = true;
         }
 
         public WaterSim()
         {
-            graphics = new GraphicsDeviceManager(this);
+            _geometryAndSettings = new GeometryAndSettings();
+            _geometryAndSettings.graphics = new GraphicsDeviceManager(this);
+            _waterControl = new WaterControl(_geometryAndSettings);
+
             Content.RootDirectory = "Content";
         }
 
         protected override void Initialize()
         {
             IsMouseVisible = false;
-            graphics.PreferredBackBufferWidth = 640;
-            graphics.PreferredBackBufferHeight = 480;
+            _geometryAndSettings.graphics.PreferredBackBufferWidth = 640;
+            _geometryAndSettings.graphics.PreferredBackBufferHeight = 480;
 
             //this.graphics.IsFullScreen = true;
 
-            graphics.ApplyChanges();
+            _geometryAndSettings.graphics.ApplyChanges();
 
             //emmitterbase value adjustments
-            cursorEmitterStrength = emitterBaseStrength * 20.0f;
-            globalEmitterStrength = emitterBaseStrength / 100.0f;
+            _geometryAndSettings.cursorEmitterStrength = _geometryAndSettings.emitterBaseStrength * 20.0f;
+            _geometryAndSettings.globalEmitterStrength = _geometryAndSettings.emitterBaseStrength / 100.0f;
 
             Window.Title = "Mike Randrup's WaterFlow Sim (built on Riemer's 3D Tutorials & XNA)";
 
@@ -259,35 +83,35 @@ namespace WaterFlowSim
 
         protected override void LoadContent()
         {
-            device = GraphicsDevice;
+            _geometryAndSettings.device = GraphicsDevice;
 
-            effect = Content.Load<Effect>("shaders/Series4Effects");
+            _geometryAndSettings.effect = Content.Load<Effect>("shaders/Series4Effects");
             UpdateViewMatrix();
 
-            viewMatrix = Matrix.CreateLookAt(new Vector3(130, 30, -50), new Vector3(0, 0, -40), new Vector3(0, 1, 0));
-            projectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.PiOver4, device.Viewport.AspectRatio, 0.3f, 1000.0f);
+            _geometryAndSettings.viewMatrix = Matrix.CreateLookAt(new Vector3(130, 30, -50), new Vector3(0, 0, -40), new Vector3(0, 1, 0));
+            _geometryAndSettings.projectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.PiOver4, _geometryAndSettings.device.Viewport.AspectRatio, 0.3f, 1000.0f);
 
-            skyDome = Content.Load<Model>("geometry/dome"); skyDome.Meshes[0].MeshParts[0].Effect = effect.Clone();
+            _geometryAndSettings.skyDome = Content.Load<Model>("geometry/dome"); _geometryAndSettings.skyDome.Meshes[0].MeshParts[0].Effect = _geometryAndSettings.effect.Clone();
 
-            PresentationParameters pp = device.PresentationParameters;
-            refractionRenderTarget = new RenderTarget2D(device, pp.BackBufferWidth, pp.BackBufferHeight, false, pp.BackBufferFormat, pp.DepthStencilFormat);
+            PresentationParameters pp = _geometryAndSettings.device.PresentationParameters;
+            _geometryAndSettings.refractionRenderTarget = new RenderTarget2D(_geometryAndSettings.device, pp.BackBufferWidth, pp.BackBufferHeight, false, pp.BackBufferFormat, pp.DepthStencilFormat);
 
-            reflectionRenderTarget = new RenderTarget2D(device, pp.BackBufferWidth, pp.BackBufferHeight, false, pp.BackBufferFormat, pp.DepthStencilFormat);
+            _geometryAndSettings.reflectionRenderTarget = new RenderTarget2D(_geometryAndSettings.device, pp.BackBufferWidth, pp.BackBufferHeight, false, pp.BackBufferFormat, pp.DepthStencilFormat);
 
-            Mouse.SetPosition(device.Viewport.Width / 2, device.Viewport.Height / 2);
-            originalMouseState = Mouse.GetState();
+            Mouse.SetPosition(_geometryAndSettings.device.Viewport.Width / 2, _geometryAndSettings.device.Viewport.Height / 2);
+            _geometryAndSettings.originalMouseState = Mouse.GetState();
 
-            bbEffect = Content.Load<Effect>("shaders/bbEffect");
+            _geometryAndSettings.bbEffect = Content.Load<Effect>(@"shaders\bbEffect");
 
             LoadVertices();
             LoadTextures();
 
-            cursorLocate = new CursorLocate(terrainWidth, terrainLength);
+            CursorLocate.Initialize(_geometryAndSettings.terrainWidth, _geometryAndSettings.terrainLength);
         }
 
         private void LoadVertices()
         {
-            Texture2D heightMap = Content.Load<Texture2D>(terrainTextureName);
+            Texture2D heightMap = Content.Load<Texture2D>(_geometryAndSettings.terrainTextureName);
             LoadHeightData(heightMap);
             VertexMultitextured[] terrainVertices = SetUpLandVertices();
             int[] terrainIndices = SetUpSharedIndices();
@@ -299,95 +123,95 @@ namespace WaterFlowSim
 
         private void LoadTextures()
         {
-            
-            grassTexture = 
-            rockTexture = 
-            snowTexture = 
-            treeTexture =
-            sandTexture = Content.Load<Texture2D>("textures/beachsand");
 
-            cloudMap = Content.Load<Texture2D>("textures/cloudMap");
-            waterBumpMap = Content.Load<Texture2D>("textures/waterbump");
+            _geometryAndSettings.grassTexture =
+            _geometryAndSettings.rockTexture =
+            _geometryAndSettings.snowTexture =
+            _geometryAndSettings.treeTexture =
+            _geometryAndSettings.sandTexture = Content.Load<Texture2D>("textures/beachsand");
+
+            _geometryAndSettings.cloudMap = Content.Load<Texture2D>("textures/cloudMap");
+            _geometryAndSettings.waterBumpMap = Content.Load<Texture2D>("textures/waterbump");
         }
 
         private void LoadHeightData(Texture2D heightMap)
         {
 
-            terrainWidth = heightMap.Width;
-            terrainLength = heightMap.Height;
+            _geometryAndSettings.terrainWidth = heightMap.Width;
+            _geometryAndSettings.terrainLength = heightMap.Height;
 
-            Color[] heightMapColors = new Color[terrainWidth * terrainLength];
+            Color[] heightMapColors = new Color[_geometryAndSettings.terrainWidth * _geometryAndSettings.terrainLength];
             heightMap.GetData(heightMapColors);
 
-            heightData = new float[terrainWidth, terrainLength];
-            for (int x = 0; x < terrainWidth; x++)
-                for (int y = 0; y < terrainLength; y++)
+            _geometryAndSettings.heightData = new float[_geometryAndSettings.terrainWidth, _geometryAndSettings.terrainLength];
+            for (int x = 0; x < _geometryAndSettings.terrainWidth; x++)
+                for (int y = 0; y < _geometryAndSettings.terrainLength; y++)
                 {
-                    heightData[x, y] = (heightMapColors[x + y * terrainWidth].R / 255f) * 30f;
+                    _geometryAndSettings.heightData[x, y] = (heightMapColors[x + y * _geometryAndSettings.terrainWidth].R / 255f) * 30f;
                 }
 
         }
 
         private VertexMultitextured[] SetUpLandVertices()
         {
-            landVertices = new VertexMultitextured[terrainWidth * terrainLength];
-            vertices = new VertexMultitextured[terrainWidth * terrainLength];
+            _geometryAndSettings.landVertices = new VertexMultitextured[_geometryAndSettings.terrainWidth * _geometryAndSettings.terrainLength];
+            _geometryAndSettings.vertices = new VertexMultitextured[_geometryAndSettings.terrainWidth * _geometryAndSettings.terrainLength];
 
-            for (int x = 0; x < terrainWidth; x++)
+            for (int x = 0; x < _geometryAndSettings.terrainWidth; x++)
             {
-                for (int y = 0; y < terrainLength; y++)
+                for (int y = 0; y < _geometryAndSettings.terrainLength; y++)
                 {
-                    int cellIndex = x + y * terrainWidth;
+                    int cellIndex = x + y * _geometryAndSettings.terrainWidth;
 
-                    landVertices[cellIndex].Position = new Vector3(x, heightData[x, y], -y);
-                    landVertices[cellIndex].TextureCoordinate.X = (float)x / 30.0f;
-                    landVertices[cellIndex].TextureCoordinate.Y = (float)y / 30.0f;
+                    _geometryAndSettings.landVertices[cellIndex].Position = new Vector3(x, _geometryAndSettings.heightData[x, y], -y);
+                    _geometryAndSettings.landVertices[cellIndex].TextureCoordinate.X = (float)x / 30.0f;
+                    _geometryAndSettings.landVertices[cellIndex].TextureCoordinate.Y = (float)y / 30.0f;
 
-                    landVertices[cellIndex].TexWeights.X = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 0) / 8.0f, 0, 1);
-                    landVertices[cellIndex].TexWeights.Y = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 12) / 6.0f, 0, 1);
-                    landVertices[cellIndex].TexWeights.Z = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 20) / 6.0f, 0, 1);
-                    landVertices[cellIndex].TexWeights.W = MathHelper.Clamp(1.0f - Math.Abs(heightData[x, y] - 30) / 6.0f, 0, 1);
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.X = MathHelper.Clamp(1.0f - Math.Abs(_geometryAndSettings.heightData[x, y] - 0) / 8.0f, 0, 1);
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.Y = MathHelper.Clamp(1.0f - Math.Abs(_geometryAndSettings.heightData[x, y] - 12) / 6.0f, 0, 1);
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.Z = MathHelper.Clamp(1.0f - Math.Abs(_geometryAndSettings.heightData[x, y] - 20) / 6.0f, 0, 1);
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.W = MathHelper.Clamp(1.0f - Math.Abs(_geometryAndSettings.heightData[x, y] - 30) / 6.0f, 0, 1);
 
-                    float total = landVertices[cellIndex].TexWeights.X;
-                    total += landVertices[cellIndex].TexWeights.Y;
-                    total += landVertices[cellIndex].TexWeights.Z;
-                    total += landVertices[cellIndex].TexWeights.W;
+                    float total = _geometryAndSettings.landVertices[cellIndex].TexWeights.X;
+                    total += _geometryAndSettings.landVertices[cellIndex].TexWeights.Y;
+                    total += _geometryAndSettings.landVertices[cellIndex].TexWeights.Z;
+                    total += _geometryAndSettings.landVertices[cellIndex].TexWeights.W;
 
-                    landVertices[cellIndex].TexWeights.X /= total;
-                    landVertices[cellIndex].TexWeights.Y /= total;
-                    landVertices[cellIndex].TexWeights.Z /= total;
-                    landVertices[cellIndex].TexWeights.W /= total;
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.X /= total;
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.Y /= total;
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.Z /= total;
+                    _geometryAndSettings.landVertices[cellIndex].TexWeights.W /= total;
                 }
             }
 
-            return landVertices;
+            return _geometryAndSettings.landVertices;
         }
 
         private int[] SetUpSharedIndices()
         {
             int counter = 0;
-            indices = new int[(terrainWidth - 1) * (terrainLength - 1) * 6];
+            _geometryAndSettings.sharedIndices = new int[(_geometryAndSettings.terrainWidth - 1) * (_geometryAndSettings.terrainLength - 1) * 6];
 
-            for (int y = 0; y < terrainLength - 1; y++)
+            for (int y = 0; y < _geometryAndSettings.terrainLength - 1; y++)
             {
-                for (int x = 0; x < terrainWidth - 1; x++)
+                for (int x = 0; x < _geometryAndSettings.terrainWidth - 1; x++)
                 {
-                    int lowerLeft = x + y * terrainWidth;
-                    int lowerRight = (x + 1) + y * terrainWidth;
-                    int topLeft = x + (y + 1) * terrainWidth;
-                    int topRight = (x + 1) + (y + 1) * terrainWidth;
+                    int lowerLeft = x + y * _geometryAndSettings.terrainWidth;
+                    int lowerRight = (x + 1) + y * _geometryAndSettings.terrainWidth;
+                    int topLeft = x + (y + 1) * _geometryAndSettings.terrainWidth;
+                    int topRight = (x + 1) + (y + 1) * _geometryAndSettings.terrainWidth;
 
-                    indices[counter++] = topLeft;
-                    indices[counter++] = lowerRight;
-                    indices[counter++] = lowerLeft;
+                    _geometryAndSettings.sharedIndices[counter++] = topLeft;
+                    _geometryAndSettings.sharedIndices[counter++] = lowerRight;
+                    _geometryAndSettings.sharedIndices[counter++] = lowerLeft;
 
-                    indices[counter++] = topLeft;
-                    indices[counter++] = topRight;
-                    indices[counter++] = lowerRight;
+                    _geometryAndSettings.sharedIndices[counter++] = topLeft;
+                    _geometryAndSettings.sharedIndices[counter++] = topRight;
+                    _geometryAndSettings.sharedIndices[counter++] = lowerRight;
                 }
             }
 
-            return indices;
+            return _geometryAndSettings.sharedIndices;
         }
 
         private VertexMultitextured[] CalculateNormals(VertexMultitextured[] vertices, int[] indices)
@@ -421,37 +245,37 @@ namespace WaterFlowSim
 
             VertexDeclaration vertexDeclaration = new VertexDeclaration(VertexMultitextured.VertexElements);
 
-            landVertexBuffer = new VertexBuffer(device, vertexDeclaration, vertices.Length, BufferUsage.WriteOnly);
-            landVertexBuffer.SetData(vertices.ToArray());
+            _geometryAndSettings.landVertexBuffer = new VertexBuffer(_geometryAndSettings.device, vertexDeclaration, vertices.Length, BufferUsage.WriteOnly);
+            _geometryAndSettings.landVertexBuffer.SetData(vertices.ToArray());
 
-            sharedIndexBuffer = new IndexBuffer(device, typeof(int), indices.Length, BufferUsage.WriteOnly);
-            sharedIndexBuffer.SetData(indices);
+            _geometryAndSettings.sharedIndexBuffer = new IndexBuffer(_geometryAndSettings.device, typeof(int), indices.Length, BufferUsage.WriteOnly);
+            _geometryAndSettings.sharedIndexBuffer.SetData(indices);
         }
 
         private void SetUpWaterVertices()
         {
-            waterVertices = new VertexPositionTexture[terrainWidth * terrainLength];
-            waterValueModel = new WaterAndSaturation[terrainWidth * terrainLength];
+            _geometryAndSettings.waterVertices = new VertexPositionTexture[_geometryAndSettings.terrainWidth * _geometryAndSettings.terrainLength];
+            _geometryAndSettings.waterValueModel = new WaterAndSaturation[_geometryAndSettings.terrainWidth * _geometryAndSettings.terrainLength];
 
-            for (int x = 0; x < terrainWidth; x++)
+            for (int x = 0; x < _geometryAndSettings.terrainWidth; x++)
             {
-                for (int y = 0; y < terrainLength; y++)
+                for (int y = 0; y < _geometryAndSettings.terrainLength; y++)
                 {
-                    waterValueModel[x + y * terrainWidth].waterValue = waterGlobalValue;
-                    waterVertices[x + y * terrainWidth] = new VertexPositionTexture(
+                    _geometryAndSettings.waterValueModel[x + y * _geometryAndSettings.terrainWidth].waterValue = _geometryAndSettings.waterGlobalValue;
+                    _geometryAndSettings.waterVertices[x + y * _geometryAndSettings.terrainWidth] = new VertexPositionTexture(
                         new Vector3(
-                            (landVertices[x + y * terrainWidth].Position.X),
+                            (_geometryAndSettings.landVertices[x + y * _geometryAndSettings.terrainWidth].Position.X),
                             0.0f, // base value, actually set in update loop
-                            (landVertices[x + y * terrainWidth].Position.Z)
+                            (_geometryAndSettings.landVertices[x + y * _geometryAndSettings.terrainWidth].Position.Z)
                             ),
-                        new Vector2(x / terrainWidth, y / terrainLength)
+                        new Vector2(x / _geometryAndSettings.terrainWidth, y / _geometryAndSettings.terrainLength)
                     );
                 }
             }
 
-            waterVertexBuffer = new VertexBuffer(GraphicsDevice, VertexPositionTexture.VertexDeclaration, waterVertices.Count(), BufferUsage.WriteOnly);
+            _geometryAndSettings.waterVertexBuffer = new VertexBuffer(GraphicsDevice, VertexPositionTexture.VertexDeclaration, _geometryAndSettings.waterVertices.Count(), BufferUsage.WriteOnly);
 
-            waterVertexBuffer.SetData(waterVertices);
+            _geometryAndSettings.waterVertexBuffer.SetData(_geometryAndSettings.waterVertices);
         }
 
         protected override void Update(GameTime gameTime)
@@ -462,14 +286,14 @@ namespace WaterFlowSim
 
             if (keyboardState.IsKeyDown(Keys.OemPeriod)) toggleWireFramesOnly();
 
-            if (keyboardState.IsKeyDown(Keys.R)) actionResetState();
+            if (keyboardState.IsKeyDown(Keys.R)) _waterControl.actionResetState();
 
-            if (keyboardState.IsKeyDown(Keys.T)) actionEmitWaterCursor();
-            if (keyboardState.IsKeyDown(Keys.G)) actionDrainWaterCursor();
-            if (keyboardState.IsKeyDown(Keys.N)) actionEliminateWater();
-            if (keyboardState.IsKeyDown(Keys.U)) actionDrainWaterAll();
-            if (keyboardState.IsKeyDown(Keys.J)) actionEmitWaterAll();
-            if (keyboardState.IsKeyDown(Keys.M)) actionTidalWave();
+            if (keyboardState.IsKeyDown(Keys.T)) _waterControl.actionEmitWaterCursor();
+            if (keyboardState.IsKeyDown(Keys.G)) _waterControl.actionDrainWaterCursor();
+            if (keyboardState.IsKeyDown(Keys.N)) _waterControl.actionEliminateWater();
+            if (keyboardState.IsKeyDown(Keys.U)) _waterControl.actionDrainWaterAll();
+            if (keyboardState.IsKeyDown(Keys.J)) _waterControl.actionEmitWaterAll();
+            if (keyboardState.IsKeyDown(Keys.M)) _waterControl.actionTidalWave();
 
             if (keyboardState.IsKeyDown(Keys.I)) actionScaleLandUp();
             if (keyboardState.IsKeyDown(Keys.K)) actionScaleLandDown();
@@ -480,7 +304,7 @@ namespace WaterFlowSim
             UpdateWaterModel();
             UpdateWaterAndLand();
 
-            if (autoEmmiter) actionEmitWaterCursor();
+            if (_geometryAndSettings.autoEmmiter) _waterControl.actionEmitWaterCursor();
 
             base.Update(gameTime);
         }
@@ -494,16 +318,16 @@ namespace WaterFlowSim
             float checkWater, checkLand, checkTotal, lowestNeighborValue;
             int checkSlot, lowestNeighborSlot;
 
-            for (int x = 0; x < terrainWidth; x++)
+            for (int x = 0; x < _geometryAndSettings.terrainWidth; x++)
             {
-                for (int z = 0; z < terrainLength; z++)
+                for (int z = 0; z < _geometryAndSettings.terrainLength; z++)
                 {
                     lowestNeighborValue = 1000000.0f; // set artificially very high
                     lowestNeighborSlot = -1; // used as a default flag not to process water
 
-                    cellSlot = x + z * terrainWidth;
-                    cellWater = waterValueModel[cellSlot].waterValue;
-                    cellLand = landVertices[cellSlot].Position.Y;
+                    cellSlot = x + z * _geometryAndSettings.terrainWidth;
+                    cellWater = _geometryAndSettings.waterValueModel[cellSlot].waterValue;
+                    cellLand = _geometryAndSettings.landVertices[cellSlot].Position.Y;
                     cellTotal = cellWater + cellLand;
 
                     float waterDelta;
@@ -511,20 +335,20 @@ namespace WaterFlowSim
 
                     float verticalChangeForCell = 0;
 
-                    if (cellWater > waterExistenceThreshold)
+                    if (cellWater > _geometryAndSettings.waterExistenceThreshold)
                     { // if there is water here to process
 
                         for (int checkX = -1; checkX <= 1; checkX++)
                         {
                             for (int checkZ = -1; checkZ <= 1; checkZ++)
                             {
-                                checkSlot = (checkX + x) + ((z + checkZ) * terrainWidth);
-                                if ((checkSlot >= 0) && (checkSlot < (terrainWidth * terrainLength)))
+                                checkSlot = (checkX + x) + ((z + checkZ) * _geometryAndSettings.terrainWidth);
+                                if ((checkSlot >= 0) && (checkSlot < (_geometryAndSettings.terrainWidth * _geometryAndSettings.terrainLength)))
                                 { // array bounds check
                                     if (cellSlot != checkSlot)
                                     { // skip the self cell case
-                                        checkWater = waterValueModel[checkSlot].waterValue;
-                                        checkLand = landVertices[checkSlot].Position.Y;
+                                        checkWater = _geometryAndSettings.waterValueModel[checkSlot].waterValue;
+                                        checkLand = _geometryAndSettings.landVertices[checkSlot].Position.Y;
                                         checkTotal = checkWater + checkLand;
                                         if (checkTotal <= cellTotal)
                                         {
@@ -541,33 +365,33 @@ namespace WaterFlowSim
 
                         if (lowestNeighborSlot > -1)
                         { // we found a lower neighbor in our pass
-                            if (landVertices[lowestNeighborSlot].Position.Y > cellLand)
-                                flowDampening = downhillDampening;
+                            if (_geometryAndSettings.landVertices[lowestNeighborSlot].Position.Y > cellLand)
+                                flowDampening = _geometryAndSettings.downhillDampening;
                             else
-                                flowDampening = uphillDampening;
+                                flowDampening = _geometryAndSettings.uphillDampening;
 
                             float idealLevel =
                                 (cellTotal +
-                                (waterValueModel[lowestNeighborSlot].waterValue + landVertices[lowestNeighborSlot].Position.Y))
+                                (_geometryAndSettings.waterValueModel[lowestNeighborSlot].waterValue + _geometryAndSettings.landVertices[lowestNeighborSlot].Position.Y))
                                 / 2;
-                            idealLevel -= landVertices[cellSlot].Position.Y; // adjust for land presence
+                            idealLevel -= _geometryAndSettings.landVertices[cellSlot].Position.Y; // adjust for land presence
 
                             waterDelta = (cellWater - idealLevel) * flowDampening;
 
-                            waterValueModel[cellSlot].waterValue -= waterDelta;
-                            waterValueModel[lowestNeighborSlot].waterValue += waterDelta;
+                            _geometryAndSettings.waterValueModel[cellSlot].waterValue -= waterDelta;
+                            _geometryAndSettings.waterValueModel[lowestNeighborSlot].waterValue += waterDelta;
                             cellWater -= waterDelta;
 
-                            float cellSaturationAverage = (waterValueModel[lowestNeighborSlot].saturationValue + waterValueModel[cellSlot].saturationValue) / 2;
-                            waterValueModel[lowestNeighborSlot].saturationValue = cellSaturationAverage * 1.5f;
-                            waterValueModel[cellSlot].saturationValue = cellSaturationAverage * 0.5f;
+                            float cellSaturationAverage = (_geometryAndSettings.waterValueModel[lowestNeighborSlot].saturationValue + _geometryAndSettings.waterValueModel[cellSlot].saturationValue) / 2;
+                            _geometryAndSettings.waterValueModel[lowestNeighborSlot].saturationValue = cellSaturationAverage * 1.5f;
+                            _geometryAndSettings.waterValueModel[cellSlot].saturationValue = cellSaturationAverage * 0.5f;
 
-                            verticalChangeForCell = cellTotal - (waterValueModel[lowestNeighborSlot].waterValue + landVertices[lowestNeighborSlot].Position.Y);
+                            verticalChangeForCell = cellTotal - (_geometryAndSettings.waterValueModel[lowestNeighborSlot].waterValue + _geometryAndSettings.landVertices[lowestNeighborSlot].Position.Y);
 
                             Erosion.PerformErosion(
-                                ref waterValueModel[lowestNeighborSlot].waterValue,
-                                ref waterValueModel[lowestNeighborSlot].saturationValue,
-                                ref landVertices[lowestNeighborSlot].Position.Y,
+                                ref _geometryAndSettings.waterValueModel[lowestNeighborSlot].waterValue,
+                                ref _geometryAndSettings.waterValueModel[lowestNeighborSlot].saturationValue,
+                                ref _geometryAndSettings.landVertices[lowestNeighborSlot].Position.Y,
                                 verticalChangeForCell
                             );
                         }
@@ -575,25 +399,25 @@ namespace WaterFlowSim
                 }
             }
 
-            if (drainWaterFromEdges)
+            if (_geometryAndSettings.drainWaterFromEdges)
             {
-                for (int x = 0; x < terrainWidth; x++)
+                for (int x = 0; x < _geometryAndSettings.terrainWidth; x++)
                 {
                     // top edge
-                    waterValueModel[x + 0].waterValue = waterGlobalValue;
-                    waterValueModel[x + 0].saturationValue = Erosion.INITIAL_SATURATION;
+                    _geometryAndSettings.waterValueModel[x + 0].waterValue = _geometryAndSettings.waterGlobalValue;
+                    _geometryAndSettings.waterValueModel[x + 0].saturationValue = Erosion.INITIAL_SATURATION;
                     // bottom edge
-                    waterValueModel[x + terrainWidth*(terrainLength-1)].waterValue = waterGlobalValue;
-                    waterValueModel[x + terrainWidth * (terrainLength - 1)].saturationValue = Erosion.INITIAL_SATURATION;
+                    _geometryAndSettings.waterValueModel[x + _geometryAndSettings.terrainWidth * (_geometryAndSettings.terrainLength - 1)].waterValue = _geometryAndSettings.waterGlobalValue;
+                    _geometryAndSettings.waterValueModel[x + _geometryAndSettings.terrainWidth * (_geometryAndSettings.terrainLength - 1)].saturationValue = Erosion.INITIAL_SATURATION;
                 }
-                for (int z = 0; z < terrainLength; z++)
+                for (int z = 0; z < _geometryAndSettings.terrainLength; z++)
                 {
                     // left edge
-                    waterValueModel[0 + z * terrainWidth].waterValue = waterGlobalValue;
-                    waterValueModel[0 + z * terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
+                    _geometryAndSettings.waterValueModel[0 + z * _geometryAndSettings.terrainWidth].waterValue = _geometryAndSettings.waterGlobalValue;
+                    _geometryAndSettings.waterValueModel[0 + z * _geometryAndSettings.terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
                     // right edge
-                    waterValueModel[(terrainLength-1) + z * terrainWidth].waterValue = waterGlobalValue;
-                    waterValueModel[(terrainLength-1) + z * terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
+                    _geometryAndSettings.waterValueModel[(_geometryAndSettings.terrainLength - 1) + z * _geometryAndSettings.terrainWidth].waterValue = _geometryAndSettings.waterGlobalValue;
+                    _geometryAndSettings.waterValueModel[(_geometryAndSettings.terrainLength - 1) + z * _geometryAndSettings.terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
                 }
             }
         }
@@ -602,13 +426,13 @@ namespace WaterFlowSim
         {
             // rotate camera
             MouseState currentMouseState = Mouse.GetState();
-            if (currentMouseState != originalMouseState)
+            if (currentMouseState != _geometryAndSettings.originalMouseState)
             {
-                float xDifference = currentMouseState.X - originalMouseState.X;
-                float yDifference = currentMouseState.Y - originalMouseState.Y;
-                leftrightRot -= rotationSpeed * xDifference * amount;
-                updownRot -= rotationSpeed * yDifference * amount;
-                Mouse.SetPosition(device.Viewport.Width / 2, device.Viewport.Height / 2);
+                float xDifference = currentMouseState.X - _geometryAndSettings.originalMouseState.X;
+                float yDifference = currentMouseState.Y - _geometryAndSettings.originalMouseState.Y;
+                _geometryAndSettings.leftrightRot -= GeometryAndSettings.rotationSpeed * xDifference * amount;
+                _geometryAndSettings.updownRot -= GeometryAndSettings.rotationSpeed * yDifference * amount;
+                Mouse.SetPosition(_geometryAndSettings.device.Viewport.Width / 2, _geometryAndSettings.device.Viewport.Height / 2);
                 UpdateViewMatrix();
             }
 
@@ -632,74 +456,74 @@ namespace WaterFlowSim
 
             // emitter cursor location
             if (keyState.IsKeyDown(Keys.Up))
-                cursorLocate.AlterZ(1);
+                CursorLocate.AlterZ(1);
             if (keyState.IsKeyDown(Keys.Down))
-                cursorLocate.AlterZ(-1);
+                CursorLocate.AlterZ(-1);
             if (keyState.IsKeyDown(Keys.Right))
-                cursorLocate.AlterZ(1);
+                CursorLocate.AlterZ(1);
             if (keyState.IsKeyDown(Keys.Left))
-                cursorLocate.AlterX(-1);
+                CursorLocate.AlterX(-1);
             if (keyState.IsKeyDown(Keys.End))
-                cursorLocate.ResetToCenter();
+                CursorLocate.ResetToCenter();
 
         }
 
         private void AddToCameraPosition(Vector3 vectorToAdd)
         {
-            Matrix cameraRotation = Matrix.CreateRotationX(updownRot) * Matrix.CreateRotationY(leftrightRot);
+            Matrix cameraRotation = Matrix.CreateRotationX(_geometryAndSettings.updownRot) * Matrix.CreateRotationY(_geometryAndSettings.leftrightRot);
             Vector3 rotatedVector = Vector3.Transform(vectorToAdd, cameraRotation);
-            cameraPosition += moveSpeed * rotatedVector;
+            _geometryAndSettings.cameraPosition += GeometryAndSettings.moveSpeed * rotatedVector;
             UpdateViewMatrix();
         }
 
         private void UpdateViewMatrix()
         {
-            Matrix cameraRotation = Matrix.CreateRotationX(updownRot) * Matrix.CreateRotationY(leftrightRot);
+            Matrix cameraRotation = Matrix.CreateRotationX(_geometryAndSettings.updownRot) * Matrix.CreateRotationY(_geometryAndSettings.leftrightRot);
 
             Vector3 cameraOriginalTarget = new Vector3(0, 0, -1);
             Vector3 cameraOriginalUpVector = new Vector3(0, 1, 0);
 
             Vector3 cameraRotatedTarget = Vector3.Transform(cameraOriginalTarget, cameraRotation);
-            Vector3 cameraFinalTarget = cameraPosition + cameraRotatedTarget;
+            Vector3 cameraFinalTarget = _geometryAndSettings.cameraPosition + cameraRotatedTarget;
 
             Vector3 cameraRotatedUpVector = Vector3.Transform(cameraOriginalUpVector, cameraRotation);
 
-            viewMatrix = Matrix.CreateLookAt(cameraPosition, cameraFinalTarget, cameraRotatedUpVector);
+            _geometryAndSettings.viewMatrix = Matrix.CreateLookAt(_geometryAndSettings.cameraPosition, cameraFinalTarget, cameraRotatedUpVector);
 
 
-            Vector3 reflCameraPosition = cameraPosition;
-            reflCameraPosition.Y = -cameraPosition.Y + waterGlobalValue * 2;
+            Vector3 reflCameraPosition = _geometryAndSettings.cameraPosition;
+            reflCameraPosition.Y = -_geometryAndSettings.cameraPosition.Y + _geometryAndSettings.waterGlobalValue * 2;
             Vector3 reflTargetPos = cameraFinalTarget;
-            reflTargetPos.Y = -cameraFinalTarget.Y + waterGlobalValue * 2;
+            reflTargetPos.Y = -cameraFinalTarget.Y + _geometryAndSettings.waterGlobalValue * 2;
 
             Vector3 cameraRight = Vector3.Transform(new Vector3(1, 0, 0), cameraRotation);
             Vector3 invUpVector = Vector3.Cross(cameraRight, reflTargetPos - reflCameraPosition);
 
-            reflectionViewMatrix = Matrix.CreateLookAt(reflCameraPosition, reflTargetPos, invUpVector);
+            _geometryAndSettings.reflectionViewMatrix = Matrix.CreateLookAt(reflCameraPosition, reflTargetPos, invUpVector);
         }
 
         protected override void Draw(GameTime gameTime)
         {
             float time = (float)gameTime.TotalGameTime.TotalMilliseconds / 100.0f;
             RasterizerState rs = new RasterizerState();
-            if (WireFramesOnly)
+            if (_geometryAndSettings.WireFramesOnly)
             {
                 rs.FillMode = FillMode.WireFrame;
             }
             rs.CullMode = CullMode.None; // CullCounterClockwiseFace;
 
-            device.RasterizerState = rs;
+            _geometryAndSettings.device.RasterizerState = rs;
 
             DrawRefractionMap();
             DrawReflectionMap();
 
             Color bgColor = new Color(0.94140625f, 0.7421875f, 0.21484375f);
 
-            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, bgColor, 1.0f, 0);
+            _geometryAndSettings.device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, bgColor, 1.0f, 0);
 
-            DrawSkyDome(viewMatrix);
+            DrawSkyDome(_geometryAndSettings.viewMatrix);
 
-            DrawTerrain(viewMatrix);
+            DrawTerrain(_geometryAndSettings.viewMatrix);
 
             DrawWater(time / 10);
 
@@ -708,28 +532,28 @@ namespace WaterFlowSim
 
         private void DrawTerrain(Matrix currentViewMatrix)
         {
-            effect.CurrentTechnique = effect.Techniques["MultiTextured"];
-            effect.Parameters["xTexture0"].SetValue(sandTexture);
-            effect.Parameters["xTexture1"].SetValue(grassTexture);
-            effect.Parameters["xTexture2"].SetValue(rockTexture);
-            effect.Parameters["xTexture3"].SetValue(snowTexture);
+            _geometryAndSettings.effect.CurrentTechnique = _geometryAndSettings.effect.Techniques["MultiTextured"];
+            _geometryAndSettings.effect.Parameters["xTexture0"].SetValue(_geometryAndSettings.sandTexture);
+            _geometryAndSettings.effect.Parameters["xTexture1"].SetValue(_geometryAndSettings.grassTexture);
+            _geometryAndSettings.effect.Parameters["xTexture2"].SetValue(_geometryAndSettings.rockTexture);
+            _geometryAndSettings.effect.Parameters["xTexture3"].SetValue(_geometryAndSettings.snowTexture);
 
             Matrix worldMatrix = Matrix.Identity;
-            effect.Parameters["xWorld"].SetValue(worldMatrix);
-            effect.Parameters["xView"].SetValue(currentViewMatrix);
-            effect.Parameters["xProjection"].SetValue(projectionMatrix);
+            _geometryAndSettings.effect.Parameters["xWorld"].SetValue(worldMatrix);
+            _geometryAndSettings.effect.Parameters["xView"].SetValue(currentViewMatrix);
+            _geometryAndSettings.effect.Parameters["xProjection"].SetValue(_geometryAndSettings.projectionMatrix);
 
-            effect.Parameters["xEnableLighting"].SetValue(true);
-            effect.Parameters["xAmbient"].SetValue(0.4f);
-            effect.Parameters["xLightDirection"].SetValue(new Vector3(-0.5f, -1, -0.5f));
-            foreach (EffectPass pass in effect.CurrentTechnique.Passes)
+            _geometryAndSettings.effect.Parameters["xEnableLighting"].SetValue(true);
+            _geometryAndSettings.effect.Parameters["xAmbient"].SetValue(0.4f);
+            _geometryAndSettings.effect.Parameters["xLightDirection"].SetValue(new Vector3(-0.5f, -1, -0.5f));
+            foreach (EffectPass pass in _geometryAndSettings.effect.CurrentTechnique.Passes)
             {
                 pass.Apply();
 
-                device.Indices = sharedIndexBuffer;
-                device.SetVertexBuffer(landVertexBuffer);
+                _geometryAndSettings.device.Indices = _geometryAndSettings.sharedIndexBuffer;
+                _geometryAndSettings.device.SetVertexBuffer(_geometryAndSettings.landVertexBuffer);
 
-                device.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, vertices.Length, 0, indices.Length / 3);
+                _geometryAndSettings.device.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, _geometryAndSettings.vertices.Length, 0, _geometryAndSettings.sharedIndices.Length / 3);
 
             }
         }
@@ -737,10 +561,10 @@ namespace WaterFlowSim
         private void DrawSkyDome(Matrix currentViewMatrix)
         {
             GraphicsDevice.DepthStencilState = DepthStencilState.None;
-            Matrix[] modelTransforms = new Matrix[skyDome.Bones.Count];
-            skyDome.CopyAbsoluteBoneTransformsTo(modelTransforms);
-            Matrix wMatrix = Matrix.CreateTranslation(0, -0.3f, 0) * Matrix.CreateScale(100) * Matrix.CreateTranslation(cameraPosition);
-            foreach (ModelMesh mesh in skyDome.Meshes)
+            Matrix[] modelTransforms = new Matrix[_geometryAndSettings.skyDome.Bones.Count];
+            _geometryAndSettings.skyDome.CopyAbsoluteBoneTransformsTo(modelTransforms);
+            Matrix wMatrix = Matrix.CreateTranslation(0, -0.3f, 0) * Matrix.CreateScale(100) * Matrix.CreateTranslation(_geometryAndSettings.cameraPosition);
+            foreach (ModelMesh mesh in _geometryAndSettings.skyDome.Meshes)
             {
                 foreach (Effect currentEffect in mesh.Effects)
                 {
@@ -748,8 +572,8 @@ namespace WaterFlowSim
                     currentEffect.CurrentTechnique = currentEffect.Techniques["Textured"];
                     currentEffect.Parameters["xWorld"].SetValue(worldMatrix);
                     currentEffect.Parameters["xView"].SetValue(currentViewMatrix);
-                    currentEffect.Parameters["xProjection"].SetValue(projectionMatrix);
-                    currentEffect.Parameters["xTexture"].SetValue(cloudMap);
+                    currentEffect.Parameters["xProjection"].SetValue(_geometryAndSettings.projectionMatrix);
+                    currentEffect.Parameters["xTexture"].SetValue(_geometryAndSettings.cloudMap);
                     currentEffect.Parameters["xEnableLighting"].SetValue(false);
                 }
                 mesh.Draw();
@@ -769,63 +593,63 @@ namespace WaterFlowSim
 
         private void DrawRefractionMap()
         {
-            Plane refractionPlane = CreatePlane(waterGlobalValue + 1.5f, new Vector3(0, -1, 0), viewMatrix, false);
+            Plane refractionPlane = CreatePlane(_geometryAndSettings.waterGlobalValue + 1.5f, new Vector3(0, -1, 0), _geometryAndSettings.viewMatrix, false);
 
-            effect.Parameters["ClipPlane0"].SetValue(new Vector4(refractionPlane.Normal, refractionPlane.D));
-            effect.Parameters["Clipping"].SetValue(true);    // Allows the geometry to be clipped for the purpose of creating a refraction map
-            device.SetRenderTarget(refractionRenderTarget);
-            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1.0f, 0);
+            _geometryAndSettings.effect.Parameters["ClipPlane0"].SetValue(new Vector4(refractionPlane.Normal, refractionPlane.D));
+            _geometryAndSettings.effect.Parameters["Clipping"].SetValue(true);    // Allows the geometry to be clipped for the purpose of creating a refraction map
+            _geometryAndSettings.device.SetRenderTarget(_geometryAndSettings.refractionRenderTarget);
+            _geometryAndSettings.device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1.0f, 0);
             //DrawTerrain(viewMatrix);
-            device.SetRenderTarget(null);
-            effect.Parameters["Clipping"].SetValue(false);   // Make sure you turn it back off so the whole scene doesnt keep rendering as clipped
-            refractionMap = refractionRenderTarget;
+            _geometryAndSettings.device.SetRenderTarget(null);
+            _geometryAndSettings.effect.Parameters["Clipping"].SetValue(false);   // Make sure you turn it back off so the whole scene doesnt keep rendering as clipped
+            _geometryAndSettings.refractionMap = _geometryAndSettings.refractionRenderTarget;
 
         }
 
         private void DrawReflectionMap()
         {
-            Plane reflectionPlane = CreatePlane(waterGlobalValue - 0.5f, new Vector3(0, -1, 0), reflectionViewMatrix, true);
+            Plane reflectionPlane = CreatePlane(_geometryAndSettings.waterGlobalValue - 0.5f, new Vector3(0, -1, 0), _geometryAndSettings.reflectionViewMatrix, true);
 
-            effect.Parameters["ClipPlane0"].SetValue(new Vector4(reflectionPlane.Normal, reflectionPlane.D));
+            _geometryAndSettings.effect.Parameters["ClipPlane0"].SetValue(new Vector4(reflectionPlane.Normal, reflectionPlane.D));
 
-            effect.Parameters["Clipping"].SetValue(true);    // Allows the geometry to be clipped for the purpose of creating a refraction map
-            device.SetRenderTarget(reflectionRenderTarget);
-
-
-            device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1.0f, 0);
-            DrawSkyDome(reflectionViewMatrix);
-            DrawTerrain(reflectionViewMatrix);
+            _geometryAndSettings.effect.Parameters["Clipping"].SetValue(true);    // Allows the geometry to be clipped for the purpose of creating a refraction map
+            _geometryAndSettings.device.SetRenderTarget(_geometryAndSettings.reflectionRenderTarget);
 
 
-            effect.Parameters["Clipping"].SetValue(false);
+            _geometryAndSettings.device.Clear(ClearOptions.Target | ClearOptions.DepthBuffer, Color.Black, 1.0f, 0);
+            DrawSkyDome(_geometryAndSettings.reflectionViewMatrix);
+            DrawTerrain(_geometryAndSettings.reflectionViewMatrix);
 
-            device.SetRenderTarget(null);
 
-            reflectionMap = reflectionRenderTarget;
+            _geometryAndSettings.effect.Parameters["Clipping"].SetValue(false);
+
+            _geometryAndSettings.device.SetRenderTarget(null);
+
+            _geometryAndSettings.reflectionMap = _geometryAndSettings.reflectionRenderTarget;
         }
 
         private void DrawWater(float time)
         {
-            effect.CurrentTechnique = effect.Techniques["Water"];
+            _geometryAndSettings.effect.CurrentTechnique = _geometryAndSettings.effect.Techniques["Water"];
             Matrix worldMatrix = Matrix.Identity;
-            effect.Parameters["xWorld"].SetValue(worldMatrix);
-            effect.Parameters["xView"].SetValue(viewMatrix);
-            effect.Parameters["xReflectionView"].SetValue(reflectionViewMatrix);
-            effect.Parameters["xProjection"].SetValue(projectionMatrix);
-            effect.Parameters["xReflectionMap"].SetValue(reflectionMap);
-            effect.Parameters["xWaveLength"].SetValue(0.1f);
-            effect.Parameters["xWaveHeight"].SetValue(0.3f);
-            effect.Parameters["xTime"].SetValue(time);
-            effect.Parameters["xWindForce"].SetValue(0.002f);
-            effect.Parameters["xWindDirection"].SetValue(windDirection);
+            _geometryAndSettings.effect.Parameters["xWorld"].SetValue(worldMatrix);
+            _geometryAndSettings.effect.Parameters["xView"].SetValue(_geometryAndSettings.viewMatrix);
+            _geometryAndSettings.effect.Parameters["xReflectionView"].SetValue(_geometryAndSettings.reflectionViewMatrix);
+            _geometryAndSettings.effect.Parameters["xProjection"].SetValue(_geometryAndSettings.projectionMatrix);
+            _geometryAndSettings.effect.Parameters["xReflectionMap"].SetValue(_geometryAndSettings.reflectionMap);
+            _geometryAndSettings.effect.Parameters["xWaveLength"].SetValue(0.1f);
+            _geometryAndSettings.effect.Parameters["xWaveHeight"].SetValue(0.3f);
+            _geometryAndSettings.effect.Parameters["xTime"].SetValue(time);
+            _geometryAndSettings.effect.Parameters["xWindForce"].SetValue(0.002f);
+            _geometryAndSettings.effect.Parameters["xWindDirection"].SetValue(_geometryAndSettings.windDirection);
 
-            effect.CurrentTechnique.Passes[0].Apply();
+            _geometryAndSettings.effect.CurrentTechnique.Passes[0].Apply();
 
             //device.SetVertexBuffer(waterVertexBuffer);
             //device.DrawPrimitives(PrimitiveType.TriangleList, 0, waterVertexBuffer.VertexCount / 3);
 
-            device.Indices = sharedIndexBuffer;
-            device.SetVertexBuffer(waterVertexBuffer);
+            _geometryAndSettings.device.Indices = _geometryAndSettings.sharedIndexBuffer;
+            _geometryAndSettings.device.SetVertexBuffer(_geometryAndSettings.waterVertexBuffer);
 
             //BlendState blendState = new BlendState();
             //blendState.AlphaSourceBlend = Blend.One;
@@ -833,9 +657,9 @@ namespace WaterFlowSim
             //blendState.ColorBlendFunction = BlendFunction.Add;
             //device.BlendState = blendState;
 
-            device.BlendState = BlendState.Additive;
-            device.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, vertices.Length, 0, indices.Length / 3);
-            device.BlendState = BlendState.Opaque;
+            _geometryAndSettings.device.BlendState = BlendState.Additive;
+            _geometryAndSettings.device.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, _geometryAndSettings.vertices.Length, 0, _geometryAndSettings.sharedIndices.Length / 3);
+            _geometryAndSettings.device.BlendState = BlendState.Opaque;
         }
 
         private void UpdateWaterAndLand()
@@ -845,30 +669,30 @@ namespace WaterFlowSim
 
             float waterOffset = 0.1f;
 
-            device.SetVertexBuffer(null); // so we can pass modified geometry to it
+            _geometryAndSettings.device.SetVertexBuffer(null); // so we can pass modified geometry to it
 
-            for (int x = 0; x < terrainWidth; x++)
+            for (int x = 0; x < _geometryAndSettings.terrainWidth; x++)
             {
-                for (int y = 0; y < terrainLength; y++)
+                for (int y = 0; y < _geometryAndSettings.terrainLength; y++)
                 {
-                    int cellIndex = x + y * terrainWidth;
+                    int cellIndex = x + y * _geometryAndSettings.terrainWidth;
 
-                    waterModelValue = waterValueModel[cellIndex].waterValue;
-                    landModelValue = landVertices[cellIndex].Position.Y;
+                    waterModelValue = _geometryAndSettings.waterValueModel[cellIndex].waterValue;
+                    landModelValue = _geometryAndSettings.landVertices[cellIndex].Position.Y;
 
-                    if (waterModelValue > waterExistenceThreshold)
+                    if (waterModelValue > _geometryAndSettings.waterExistenceThreshold)
                     {
-                        waterVertices[cellIndex].Position.Y = waterModelValue + landModelValue + waterOffset;
+                        _geometryAndSettings.waterVertices[cellIndex].Position.Y = waterModelValue + landModelValue + waterOffset;
                     }
                     else
                     {
-                        waterVertices[cellIndex].Position.Y = -1.0f;
+                        _geometryAndSettings.waterVertices[cellIndex].Position.Y = -1.0f;
                     }
                 }
             }
 
-            landVertexBuffer.SetData(landVertices);
-            waterVertexBuffer.SetData(waterVertices);
+            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
+            _geometryAndSettings.waterVertexBuffer.SetData(_geometryAndSettings.waterVertices);
         }
 
 

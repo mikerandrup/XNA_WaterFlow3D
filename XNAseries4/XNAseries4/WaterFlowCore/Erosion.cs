@@ -5,12 +5,11 @@ using System.Text;
 
 namespace WaterFlowSim
 {
-
     class Erosion
     {
         private static float MAX_SATURATION = 0.25f;
         public static float INITIAL_SATURATION = MAX_SATURATION * 0.0f;
-        
+
         private const float HEIGHT_MOVED_DISSOLVE_THRESHOLD = 0.75f;
         private const float HEIGHT_MOVED_DEPOSIT_THRESHOLD = 0.15f;
         private const float MINIMUM_LAND_VALUE = 0.0f;
@@ -24,7 +23,7 @@ namespace WaterFlowSim
             Acquire,
             Hold,
             Deposit
-        } 
+        }
 
         public static ErosionMode PerformErosion(ref float waterValue, ref float saturationValue, ref float landValue, float heightJustMoved = 0f)
         {

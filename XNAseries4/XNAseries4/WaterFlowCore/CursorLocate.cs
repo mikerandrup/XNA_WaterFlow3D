@@ -3,12 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace WaterFlowSim
+namespace WaterFlowSim.Control
 {
-    class CursorLocate
+    public static class CursorLocate
     {
-
-        public CursorLocate(int xHigh = 100, int zHigh = 100)
+        public static void Initialize(int xHigh = 100, int zHigh = 100)
         {
             xMin = 0;
             xMax = xHigh;
@@ -18,27 +17,27 @@ namespace WaterFlowSim
             ResetToCenter();
         }
 
-        public void ResetToCenter()
+        public static void ResetToCenter()
         {
             xLoc = FinderCenterX();
             zLoc = FinderCenterZ();
         }
 
-        public int xLoc { get; set; }
-        public int zLoc { get; set; }
+        public static int xLoc { get; set; }
+        public static int zLoc { get; set; }
 
-        private int xMin, xMax, zMin, zMax;
+        private static int xMin, xMax, zMin, zMax;
 
-        public int getX()
+        public static int getX()
         {
             return xLoc;
         }
-        public int getZ()
+        public static int getZ()
         {
             return zLoc;
         }
 
-        public void AlterX(int delta)
+        public static void AlterX(int delta)
         {
             int newVal = xLoc += delta;
             if (newVal < xMin)
@@ -48,7 +47,7 @@ namespace WaterFlowSim
             xLoc = newVal;
         }
 
-        public void AlterZ(int delta)
+        public static void AlterZ(int delta)
         {
             int newVal = zLoc += delta;
             if (newVal < zMin)
@@ -58,7 +57,7 @@ namespace WaterFlowSim
             zLoc = newVal;
         }
 
-        public int FinderCenterX()
+        public static int FinderCenterX()
         {
             int delta = xMax - xMin;
             int center = xMin + delta / 2;
@@ -66,7 +65,7 @@ namespace WaterFlowSim
             return center;
         }
 
-        public int FinderCenterZ()
+        public static int FinderCenterZ()
         {
             int delta = zMax - zMin;
             int center = zMin + delta / 2;

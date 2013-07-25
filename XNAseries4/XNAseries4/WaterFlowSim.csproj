@@ -107,10 +107,13 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CursorLocate.cs" />
-    <Compile Include="Erosion.cs" />
+    <Compile Include="WaterFlowCore\CursorLocate.cs" />
+    <Compile Include="WaterFlowCore\Erosion.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="WaterFlowCore\GeometryAndSettings.cs" />
+    <Compile Include="WaterFlowCore\StructDefinitions.cs" />
+    <Compile Include="WaterFlowCore\Control\WaterControl.cs" />
     <Compile Include="WaterFlowSim.cs" />
   </ItemGroup>
   <ItemGroup>
