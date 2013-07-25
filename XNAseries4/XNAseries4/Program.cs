@@ -1,6 +1,6 @@
 using System;
 
-namespace XNASeries4
+namespace WaterFlowSim
 {
 #if WINDOWS || XBOX
     static class Program

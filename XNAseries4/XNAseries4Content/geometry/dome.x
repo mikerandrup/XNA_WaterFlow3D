@@ -5989,7 +5989,7 @@ Mesh {
    0.000000;0.000000;0.000000;;
 
    TextureFilename {
-    "cloudMap.jpg";
+    "../textures/cloudMap.jpg";
    }
   }
  }

@@ -14,7 +14,7 @@ using XNAseries4;
 //TODO: Refactor this mega class
 //TODO: remove shader and other code from tutorial that aren't used
 
-namespace XNASeries4
+namespace WaterFlowSim
 {
     public struct WaterAndSaturation
     {

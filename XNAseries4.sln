@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual C# Express 2010
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XNAseries4", "XNAseries4\XNAseries4\XNAseries4.csproj", "{B9E93588-1D23-4C08-8EA2-8AB027BA3116}"
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WaterFlowSim", "XNAseries4\XNAseries4\WaterFlowSim.csproj", "{B9E93588-1D23-4C08-8EA2-8AB027BA3116}"
 EndProject
-Project("{96E2B04D-8817-42C6-938A-82C39BA4D311}") = "XNAseries4Content", "XNAseries4\XNAseries4Content\XNAseries4Content.contentproj", "{3257DF65-E06E-4E53-8466-58D310C292E4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WaterFlowSim_Content", "XNAseries4\XNAseries4Content\WaterFlowSim_Content.contentproj", "{3257DF65-E06E-4E53-8466-58D310C292E4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
