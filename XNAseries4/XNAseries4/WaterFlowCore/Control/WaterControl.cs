@@ -39,7 +39,6 @@ namespace WaterFlowSim.WaterFlowCore.Control
             _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
         }
 
-
         public void actionEmitWaterAll()
         {
             for (int i = 0; i < _geometryAndSettings.landVertices.Length; i++)

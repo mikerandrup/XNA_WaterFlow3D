@@ -16,48 +16,21 @@ namespace WaterFlowSim
     {
         GeometryAndSettings _geometryAndSettings;
         WaterControl _waterControl;
-
-        // land stuff
-        private void actionScaleLandUp()
-        {
-            for (int i = 0; i < _geometryAndSettings.landVertices.Length; i++)
-            {
-                _geometryAndSettings.landVertices[i].Position.Y *= _geometryAndSettings.landMultStrength; // scale appropriate to terrain
-            }
-            _geometryAndSettings.device.SetVertexBuffer(null);
-            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
-        }
-        private void actionScaleLandDown()
-        {
-            for (int i = 0; i < _geometryAndSettings.landVertices.Length; i++)
-            {
-                _geometryAndSettings.landVertices[i].Position.Y *= 1 / _geometryAndSettings.landMultStrength; //reciprocal, yo!
-            }
-            _geometryAndSettings.device.SetVertexBuffer(null);
-            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
-        }
-        private void actionEmitLandCursor()
-        {
-
-            int cursorSlot = _geometryAndSettings.findCursor();
-            float effectiveEmitterStrength = _geometryAndSettings.cursorEmitterStrength * 0.003f;
-
-            _geometryAndSettings.landVertices[cursorSlot].Position.Y += effectiveEmitterStrength; // scale appropriate to terrain
-
-            _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
-        }
-
-        private void toggleWireFramesOnly()
-        { // TODO implement better toggle feature through keyboard state
-            if (_geometryAndSettings.WireFramesOnly) _geometryAndSettings.WireFramesOnly = false;
-            else _geometryAndSettings.WireFramesOnly = true;
-        }
+        LandControl _landControl;
+        RenderControl _renderControl;
+        CameraManager _cameraManager;
 
         public WaterSim()
         {
-            _geometryAndSettings = new GeometryAndSettings();
-            _geometryAndSettings.graphics = new GraphicsDeviceManager(this);
+            _geometryAndSettings = new GeometryAndSettings()
+            {
+                graphics = new GraphicsDeviceManager(this)
+            };
+            
             _waterControl = new WaterControl(_geometryAndSettings);
+            _landControl = new LandControl(_geometryAndSettings);
+            _renderControl = new RenderControl(_geometryAndSettings);
+            _cameraManager = new CameraManager(_geometryAndSettings);
 
             Content.RootDirectory = "Content";
         }
@@ -86,7 +59,7 @@ namespace WaterFlowSim
             _geometryAndSettings.device = GraphicsDevice;
 
             _geometryAndSettings.effect = Content.Load<Effect>("shaders/Series4Effects");
-            UpdateViewMatrix();
+            _cameraManager.UpdateViewMatrix();
 
             _geometryAndSettings.viewMatrix = Matrix.CreateLookAt(new Vector3(130, 30, -50), new Vector3(0, 0, -40), new Vector3(0, 1, 0));
             _geometryAndSettings.projectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.PiOver4, _geometryAndSettings.device.Viewport.AspectRatio, 0.3f, 1000.0f);
@@ -284,7 +257,7 @@ namespace WaterFlowSim
 
             if (keyboardState.IsKeyDown(Keys.Escape)) this.Exit();
 
-            if (keyboardState.IsKeyDown(Keys.OemPeriod)) toggleWireFramesOnly();
+            if (keyboardState.IsKeyDown(Keys.OemPeriod)) _renderControl.toggleWireFramesOnly();
 
             if (keyboardState.IsKeyDown(Keys.R)) _waterControl.actionResetState();
 
@@ -295,12 +268,12 @@ namespace WaterFlowSim
             if (keyboardState.IsKeyDown(Keys.J)) _waterControl.actionEmitWaterAll();
             if (keyboardState.IsKeyDown(Keys.M)) _waterControl.actionTidalWave();
 
-            if (keyboardState.IsKeyDown(Keys.I)) actionScaleLandUp();
-            if (keyboardState.IsKeyDown(Keys.K)) actionScaleLandDown();
-            if (keyboardState.IsKeyDown(Keys.Y)) actionEmitLandCursor();
+            if (keyboardState.IsKeyDown(Keys.I)) _landControl.actionScaleLandUp();
+            if (keyboardState.IsKeyDown(Keys.K)) _landControl.actionScaleLandDown();
+            if (keyboardState.IsKeyDown(Keys.Y)) _landControl.actionEmitLandCursor();
 
             float timeDifference = (float)gameTime.ElapsedGameTime.TotalMilliseconds / 1000.0f;
-            ProcessInput(timeDifference);
+            _cameraManager.ProcessInput(timeDifference);
             UpdateWaterModel();
             UpdateWaterAndLand();
 
@@ -420,86 +393,6 @@ namespace WaterFlowSim
                     _geometryAndSettings.waterValueModel[(_geometryAndSettings.terrainLength - 1) + z * _geometryAndSettings.terrainWidth].saturationValue = Erosion.INITIAL_SATURATION;
                 }
             }
-        }
-
-        private void ProcessInput(float amount)
-        {
-            // rotate camera
-            MouseState currentMouseState = Mouse.GetState();
-            if (currentMouseState != _geometryAndSettings.originalMouseState)
-            {
-                float xDifference = currentMouseState.X - _geometryAndSettings.originalMouseState.X;
-                float yDifference = currentMouseState.Y - _geometryAndSettings.originalMouseState.Y;
-                _geometryAndSettings.leftrightRot -= GeometryAndSettings.rotationSpeed * xDifference * amount;
-                _geometryAndSettings.updownRot -= GeometryAndSettings.rotationSpeed * yDifference * amount;
-                Mouse.SetPosition(_geometryAndSettings.device.Viewport.Width / 2, _geometryAndSettings.device.Viewport.Height / 2);
-                UpdateViewMatrix();
-            }
-
-            // move camera
-            Vector3 moveVector = new Vector3(0, 0, 0);
-            KeyboardState keyState = Keyboard.GetState();
-            if (keyState.IsKeyDown(Keys.W))
-                moveVector += new Vector3(0, 0, -1);
-            if (keyState.IsKeyDown(Keys.S))
-                moveVector += new Vector3(0, 0, 1);
-            if (keyState.IsKeyDown(Keys.D))
-                moveVector += new Vector3(1, 0, 0);
-            if (keyState.IsKeyDown(Keys.A))
-                moveVector += new Vector3(-1, 0, 0);
-            if (keyState.IsKeyDown(Keys.Q))
-                moveVector += new Vector3(0, 1, 0);
-            if (keyState.IsKeyDown(Keys.Z))
-                moveVector += new Vector3(0, -1, 0);
-
-            AddToCameraPosition(moveVector * amount);
-
-            // emitter cursor location
-            if (keyState.IsKeyDown(Keys.Up))
-                CursorLocate.AlterZ(1);
-            if (keyState.IsKeyDown(Keys.Down))
-                CursorLocate.AlterZ(-1);
-            if (keyState.IsKeyDown(Keys.Right))
-                CursorLocate.AlterZ(1);
-            if (keyState.IsKeyDown(Keys.Left))
-                CursorLocate.AlterX(-1);
-            if (keyState.IsKeyDown(Keys.End))
-                CursorLocate.ResetToCenter();
-
-        }
-
-        private void AddToCameraPosition(Vector3 vectorToAdd)
-        {
-            Matrix cameraRotation = Matrix.CreateRotationX(_geometryAndSettings.updownRot) * Matrix.CreateRotationY(_geometryAndSettings.leftrightRot);
-            Vector3 rotatedVector = Vector3.Transform(vectorToAdd, cameraRotation);
-            _geometryAndSettings.cameraPosition += GeometryAndSettings.moveSpeed * rotatedVector;
-            UpdateViewMatrix();
-        }
-
-        private void UpdateViewMatrix()
-        {
-            Matrix cameraRotation = Matrix.CreateRotationX(_geometryAndSettings.updownRot) * Matrix.CreateRotationY(_geometryAndSettings.leftrightRot);
-
-            Vector3 cameraOriginalTarget = new Vector3(0, 0, -1);
-            Vector3 cameraOriginalUpVector = new Vector3(0, 1, 0);
-
-            Vector3 cameraRotatedTarget = Vector3.Transform(cameraOriginalTarget, cameraRotation);
-            Vector3 cameraFinalTarget = _geometryAndSettings.cameraPosition + cameraRotatedTarget;
-
-            Vector3 cameraRotatedUpVector = Vector3.Transform(cameraOriginalUpVector, cameraRotation);
-
-            _geometryAndSettings.viewMatrix = Matrix.CreateLookAt(_geometryAndSettings.cameraPosition, cameraFinalTarget, cameraRotatedUpVector);
-
-
-            Vector3 reflCameraPosition = _geometryAndSettings.cameraPosition;
-            reflCameraPosition.Y = -_geometryAndSettings.cameraPosition.Y + _geometryAndSettings.waterGlobalValue * 2;
-            Vector3 reflTargetPos = cameraFinalTarget;
-            reflTargetPos.Y = -cameraFinalTarget.Y + _geometryAndSettings.waterGlobalValue * 2;
-
-            Vector3 cameraRight = Vector3.Transform(new Vector3(1, 0, 0), cameraRotation);
-            Vector3 invUpVector = Vector3.Cross(cameraRight, reflTargetPos - reflCameraPosition);
-
-            _geometryAndSettings.reflectionViewMatrix = Matrix.CreateLookAt(reflCameraPosition, reflTargetPos, invUpVector);
         }
 
         protected override void Draw(GameTime gameTime)
@@ -694,7 +587,6 @@ namespace WaterFlowSim
             _geometryAndSettings.landVertexBuffer.SetData(_geometryAndSettings.landVertices);
             _geometryAndSettings.waterVertexBuffer.SetData(_geometryAndSettings.waterVertices);
         }
-
 
     }
 }
